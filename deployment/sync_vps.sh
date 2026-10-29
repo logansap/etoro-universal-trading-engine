@@ -146,13 +146,18 @@ if [ -f "$UTE_CRED" ]; then
   for gm in $(sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$GM_ENV" 2>/dev/null); do
     case " $NAMES " in *" $gm "*) die "$UTE_CRED reuses Gold Miner variable $gm";; esac
   done
-  # the same VALUE as Gold Miner's key? Both files are parsed as text (never sourced) and compared as hashes here
+  # the same VALUE as Gold Miner's key? Both files are parsed as text (never sourced) and compared as hashes here.
+  # Permissions (scopes) belong to the USER key: reusing Gold Miner's user key is refused. eToro's x-api-key (the
+  # "public key") is shared by every key of the same account (observed 2026-10-29: a new read-only key carried the
+  # same public key as Gold Miner's write key, with a different user key), so equality there is expected; the engine
+  # still proves the user key read-only (GET /api/v1/me scopes) before any account read.
   val() { sed -n "s/^$2=//p" "$1" | tail -1 | tr -d "\"'\r" | sha256sum | cut -c1-64; }
   if [ -r "$GM_ENV" ]; then
-    for pair in "UTE_ETORO_READONLY_USER_KEY ETORO_REAL_USER_KEY" "UTE_ETORO_READONLY_API_KEY ETORO_REAL_API_KEY"; do
-      set -- $pair
-      [ "$(val "$UTE_CRED" "$1")" != "$(val "$GM_ENV" "$2")" ] || die "$1 equals Gold Miner's live $2: use a separate READ-ONLY key"
-    done
+    [ "$(val "$UTE_CRED" UTE_ETORO_READONLY_USER_KEY)" != "$(val "$GM_ENV" ETORO_REAL_USER_KEY)" ] \
+      || die "UTE_ETORO_READONLY_USER_KEY equals Gold Miner's live ETORO_REAL_USER_KEY: use a separate READ-ONLY key"
+    say "   user key differs from Gold Miner's (compared as hashes)"
+    [ "$(val "$UTE_CRED" UTE_ETORO_READONLY_API_KEY)" != "$(val "$GM_ENV" ETORO_REAL_API_KEY)" ] \
+      || say "   public API key is the same as Gold Miner's: expected (eToro's per-account public key; scopes come from the user key)"
   fi
 else
   say "   $UTE_CRED absent: the engine runs and FAILS CLOSED (BROKER_UNAVAILABLE) until the owner provisions it"

@@ -86,7 +86,7 @@ case "$KEY" in
   *BROKER_KEY_REFUSED*) fail "broker key REFUSED by the engine (a write scope or no scope list): replace the key";;
   *) case "$STATUS" in
        READ_ONLY) pass "broker key READ_ONLY (recorded at the last engine start)";;
-       NOT_CONFIGURED|"") [ -f "$UTE_CRED" ] && fail "credential file present but no READ_ONLY key check recorded" \
+       NOT_CONFIGURED|"") [ -f "$UTE_CRED" ] && fail "credential file present, but the running engine started without it (no READ_ONLY key check since its last start): run sync_vps.sh again, which restarts it" \
                             || info "broker key not configured (fails closed)";;
        *) warn "broker key check: $STATUS (broker unreachable at start: every read re-checks the scopes first)";;
      esac;;

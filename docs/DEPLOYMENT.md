@@ -108,8 +108,9 @@ bash /home/ute/current/deployment/verify_vps.sh --probe
 - a dirty checkout;
 - a concurrent deployment;
 - a preflight BLOCKER;
-- an unsafe credential file: wrong mode, CRLF, Gold Miner's variable names or key values (compared as hashes, never
-  printed);
+- an unsafe credential file: wrong mode, CRLF, Gold Miner's variable names, or Gold Miner's **user key** (compared as
+  hashes, never printed). The public API key may be the same as Gold Miner's, because eToro shares it across all keys
+  of an account; permissions come from the user key, which the engine proves read-only before any account read;
 - a release whose config does not validate.
 
 **Exit codes after a refusal-free run:**

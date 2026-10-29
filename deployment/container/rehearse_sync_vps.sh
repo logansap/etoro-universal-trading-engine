@@ -107,6 +107,10 @@ P
   say "## D. credential gates (refused before anything changes)"
   creds 'UTE_ETORO_READONLY_API_KEY=ro-api-111\nUTE_ETORO_READONLY_USER_KEY=mock-gm-user-key-000\n'
   check "a read-only file reusing Gold Miner's key VALUE is refused (exit 2), value never printed" "[ \$(run_sync --sha $A) = 2 ] && grep -q \"equals Gold Miner's live ETORO_REAL_USER_KEY\" /rehearsal/sync.out && ! grep -q 'mock-gm-user-key-000\|ro-api-111' /rehearsal/sync.out"
+  # as on the real account (2026-10-29): eToro's public API key is shared by all keys of the account; the user key
+  # (which carries the scopes) differs. Accepted; checked with --dry-run so the mock key never reaches eToro.
+  creds 'UTE_ETORO_READONLY_API_KEY=mock-gm-api-key-000\nUTE_ETORO_READONLY_USER_KEY=ro-user-222\n'
+  check "same public API key as Gold Miner but a different user key: accepted (dry run), values never printed" "[ \$(run_sync --sha $A --dry-run) = 0 ] && grep -q 'user key differs' /rehearsal/sync.out && grep -q 'public API key is the same' /rehearsal/sync.out && ! grep -q 'mock-gm-api-key-000\|ro-user-222' /rehearsal/sync.out"
   creds 'ETORO_REAL_API_KEY=x\nUTE_ETORO_READONLY_API_KEY=ro-api-111\nUTE_ETORO_READONLY_USER_KEY=ro-user-222\n'
   check "a Gold Miner variable name is refused" "[ \$(run_sync --sha $A) = 2 ]"
   creds 'UTE_ETORO_READONLY_API_KEY=ro-api-111\nUTE_ETORO_READONLY_USER_KEY=ro-user-222\n' 644
