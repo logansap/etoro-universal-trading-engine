@@ -1,0 +1,392 @@
+[
+ {
+  "nav_at_close": 2000.0,
+  "portfolio_id": "P529-ORIG",
+  "rationale": {
+   "crash_guard_active": false,
+   "qqq_10d_return": -0.05766612991414111,
+   "sleeves": {
+    "S2": {
+     "TQQQ": 0.25
+    },
+    "S3": {
+     "SOXL": 0.125,
+     "TQQQ": 0.125
+    },
+    "T10": {
+     "UVXY": 0.25
+    },
+    "T11": {
+     "SOXL": 0.08333,
+     "TECL": 0.08333,
+     "TQQQ": 0.08333
+    }
+   },
+   "sleeves_ready": {
+    "S2": true,
+    "S3": true,
+    "T10": true,
+    "T11": true
+   },
+   "source_weights": {
+    "SOXL": 0.20833,
+    "TECL": 0.08333,
+    "TQQQ": 0.45833,
+    "UVXY": 0.25
+   },
+   "strategy": "529"
+  },
+  "session": "2026-10-22",
+  "snapshot": "92a8f8be7497b1e9",
+  "status": "TRADE",
+  "targets": {
+   "SOXL": 5.074493527821722,
+   "TECL": 0.9067334142885114,
+   "TQQQ": 13.801064317030566,
+   "UVXY": 27.159152859541436
+  }
+ },
+ {
+  "nav_at_close": 2000.0,
+  "portfolio_id": "P60-ETORO",
+  "rationale": {
+   "qqq_vs_sma20": -32.770031738281205,
+   "regime": "bull (SPY > SMA200)",
+   "rsi10": {
+    "BSV": 73.25,
+    "QQQ": 32.33,
+    "SPY": 42.68,
+    "SQQQ": 67.29,
+    "TECS": 67.02,
+    "TQQQ": 31.22,
+    "UVXY": 60.97
+   },
+   "source_weights": {
+    "TQQQ": 0.9975
+   },
+   "spy_close": 763.9600219726562,
+   "spy_sma200": 723.6236209106445,
+   "strategy": "60",
+   "tqqq_vs_sma20": -10.531002426147467
+  },
+  "session": "2026-10-22",
+  "snapshot": "92a8f8be7497b1e9",
+  "status": "TRADE",
+  "targets": {
+   "TQQQ": 30.03613452270107
+  }
+ },
+ {
+  "nav_at_close": 2000.0,
+  "portfolio_id": "P60-ORIG",
+  "rationale": {
+   "qqq_vs_sma20": -32.770031738281205,
+   "regime": "bull (SPY > SMA200)",
+   "rsi10": {
+    "BSV": 73.25,
+    "QQQ": 32.33,
+    "SPY": 42.68,
+    "SQQQ": 67.29,
+    "TECS": 67.02,
+    "TQQQ": 31.22,
+    "UVXY": 60.97
+   },
+   "source_weights": {
+    "TQQQ": 0.9975
+   },
+   "spy_close": 763.9600219726562,
+   "spy_sma200": 723.6236209106445,
+   "strategy": "60",
+   "tqqq_vs_sma20": -10.531002426147467
+  },
+  "session": "2026-10-22",
+  "snapshot": "92a8f8be7497b1e9",
+  "status": "TRADE",
+  "targets": {
+   "TQQQ": 30.03613452270107
+  }
+ },
+ {
+  "nav_at_close": 2006.8215311916267,
+  "portfolio_id": "P529-ORIG",
+  "rationale": {
+   "crash_guard_active": false,
+   "qqq_10d_return": -0.062387682056621596,
+   "sleeves": {
+    "S2": {
+     "TQQQ": 0.25
+    },
+    "S3": {
+     "SOXL": 0.125,
+     "TQQQ": 0.125
+    },
+    "T10": {
+     "SOXL": 0.25
+    },
+    "T11": {
+     "SOXL": 0.08333,
+     "TECL": 0.08333,
+     "TQQQ": 0.08333
+    }
+   },
+   "sleeves_ready": {
+    "S2": true,
+    "S3": true,
+    "T10": true,
+    "T11": true
+   },
+   "source_weights": {
+    "SOXL": 0.45833,
+    "TECL": 0.08333,
+    "TQQQ": 0.45833,
+    "UVXY": 0.0
+   },
+   "strategy": "529"
+  },
+  "session": "2026-10-23",
+  "snapshot": "a5c93f2b9a4e0b7c",
+  "status": "TRADE",
+  "targets": {
+   "SOXL": 11.007578131523841,
+   "TECL": 0.8959824970155124,
+   "TQQQ": 13.875293243218461,
+   "UVXY": 0.0
+  }
+ },
+ {
+  "nav_at_close": 2017.9489201459276,
+  "portfolio_id": "P60-ETORO",
+  "rationale": {
+   "eligibility_policy": {
+    "sha16": "6196425d0d2add00",
+    "version": "ELIG-2"
+   },
+   "qqq_vs_sma20": -30.83497924804692,
+   "regime": "bull (SPY > SMA200)",
+   "rsi10": {
+    "BSV": 68.75,
+    "QQQ": 32.3,
+    "SPY": 38.73,
+    "SQQQ": 67.54,
+    "TECS": 64.2,
+    "TQQQ": 31.04,
+    "UVXY": 63.23
+   },
+   "source_weights": {
+    "TQQQ": 0.9975
+   },
+   "spy_close": 759.969970703125,
+   "spy_sma200": 724.0022924804688,
+   "strategy": "60",
+   "tqqq_vs_sma20": -9.995499801635745
+  },
+  "session": "2026-10-23",
+  "snapshot": "a5c93f2b9a4e0b7c",
+  "status": "TRADE",
+  "targets": {
+   "TQQQ": 30.36512324702764
+  }
+ },
+ {
+  "nav_at_close": 2017.6785684384001,
+  "portfolio_id": "P60-ORIG",
+  "rationale": {
+   "qqq_vs_sma20": -30.83497924804692,
+   "regime": "bull (SPY > SMA200)",
+   "rsi10": {
+    "BSV": 68.75,
+    "QQQ": 32.3,
+    "SPY": 38.73,
+    "SQQQ": 67.54,
+    "TECS": 64.2,
+    "TQQQ": 31.04,
+    "UVXY": 63.23
+   },
+   "source_weights": {
+    "TQQQ": 0.9975
+   },
+   "spy_close": 759.969970703125,
+   "spy_sma200": 724.0022924804688,
+   "strategy": "60",
+   "tqqq_vs_sma20": -9.995499801635745
+  },
+  "session": "2026-10-23",
+  "snapshot": "a5c93f2b9a4e0b7c",
+  "status": "TRADE",
+  "targets": {
+   "TQQQ": 30.361055124768864
+  }
+ },
+ {
+  "nav_at_close": 2091.7997015031715,
+  "portfolio_id": "P529-ORIG",
+  "rationale": {
+   "crash_guard_active": false,
+   "qqq_10d_return": -0.045359453671358296,
+   "sleeves": {
+    "S2": {
+     "TQQQ": 0.25
+    },
+    "S3": {
+     "SOXL": 0.125,
+     "TQQQ": 0.125
+    },
+    "T10": {
+     "SQQQ": 0.125,
+     "TLT": 0.125
+    },
+    "T11": {
+     "SOXL": 0.08333,
+     "TECL": 0.08333,
+     "TQQQ": 0.08333
+    }
+   },
+   "sleeves_ready": {
+    "S2": true,
+    "S3": true,
+    "T10": true,
+    "T11": true
+   },
+   "source_weights": {
+    "SOXL": 0.20833,
+    "SQQQ": 0.125,
+    "TECL": 0.08333,
+    "TLT": 0.125,
+    "TQQQ": 0.45833
+   },
+   "strategy": "529"
+  },
+  "session": "2026-10-26",
+  "snapshot": "930795e32531bedc",
+  "status": "TRADE",
+  "targets": {
+   "SOXL": 4.815376845080965,
+   "SQQQ": 6.812791959641729,
+   "TECL": 0.8893706213874027,
+   "TLT": 3.20121157824393,
+   "TQQQ": 14.010543995030565
+  }
+ },
+ {
+  "nav_at_close": 2082.6742443012736,
+  "portfolio_id": "P60-ETORO",
+  "rationale": {
+   "eligibility_policy": {
+    "sha16": "6196425d0d2add00",
+    "version": "ELIG-2"
+   },
+   "qqq_vs_sma20": -21.81849060058596,
+   "regime": "bull (SPY > SMA200)",
+   "rsi10": {
+    "BSV": 66.04,
+    "QQQ": 39.73,
+    "SPY": 46.22,
+    "SQQQ": 59.33,
+    "TECS": 55.32,
+    "TQQQ": 37.9,
+    "UVXY": 56.3
+   },
+   "source_weights": {},
+   "spy_close": 765.3699951171875,
+   "spy_sma200": 724.4083151245118,
+   "strategy": "60",
+   "tqqq_vs_sma20": -7.425000381469729
+  },
+  "session": "2026-10-26",
+  "snapshot": "930795e32531bedc",
+  "status": "HOLD_NO_ORDERS",
+  "targets": {}
+ },
+ {
+  "nav_at_close": 2082.1886167612743,
+  "portfolio_id": "P60-ORIG",
+  "rationale": {
+   "qqq_vs_sma20": -21.81849060058596,
+   "regime": "bull (SPY > SMA200)",
+   "rsi10": {
+    "BSV": 66.04,
+    "QQQ": 39.73,
+    "SPY": 46.22,
+    "SQQQ": 59.33,
+    "TECS": 55.32,
+    "TQQQ": 37.9,
+    "UVXY": 56.3
+   },
+   "source_weights": {},
+   "spy_close": 765.3699951171875,
+   "spy_sma200": 724.4083151245118,
+   "strategy": "60",
+   "tqqq_vs_sma20": -7.425000381469729
+  },
+  "session": "2026-10-26",
+  "snapshot": "930795e32531bedc",
+  "status": "HOLD_NO_ORDERS",
+  "targets": {}
+ },
+ {
+  "nav_at_close": 2000.0,
+  "portfolio_id": "X60SQQQ-ETORO",
+  "rationale": {
+   "eligibility_policy": {
+    "sha16": "6196425d0d2add00",
+    "version": "ELIG-2"
+   },
+   "qqq_vs_sma20": -30.83497924804692,
+   "regime": "bull (SPY > SMA200)",
+   "rsi10": {
+    "BSV": 68.75,
+    "QQQ": 32.3,
+    "SPY": 38.73,
+    "SQQQ": 67.54,
+    "TECS": 64.2,
+    "TQQQ": 31.04,
+    "UVXY": 63.23
+   },
+   "source_weights": {
+    "TQQQ": 0.9975
+   },
+   "spy_close": 759.969970703125,
+   "spy_sma200": 724.0022961425781,
+   "strategy": "60",
+   "tqqq_vs_sma20": -9.995499801635745
+  },
+  "session": "2026-10-23",
+  "snapshot": "53f150d71cc1e074",
+  "status": "TRADE",
+  "targets": {
+   "TQQQ": 30.095036543176516
+  }
+ },
+ {
+  "nav_at_close": 2040.6092026031147,
+  "portfolio_id": "X60SQQQ-ETORO",
+  "rationale": {
+   "eligibility_policy": {
+    "sha16": "6196425d0d2add00",
+    "version": "ELIG-2"
+   },
+   "qqq_vs_sma20": -21.81849060058596,
+   "regime": "bull (SPY > SMA200)",
+   "rsi10": {
+    "BSV": 66.04,
+    "QQQ": 39.73,
+    "SPY": 46.22,
+    "SQQQ": 59.33,
+    "TECS": 55.32,
+    "TQQQ": 37.9,
+    "UVXY": 56.3
+   },
+   "source_weights": {
+    "TQQQ": 0.9975
+   },
+   "spy_close": 765.3699951171875,
+   "spy_sma200": 724.4083145141601,
+   "strategy": "60",
+   "tqqq_vs_sma20": -7.425000381469729
+  },
+  "session": "2026-10-26",
+  "snapshot": "45fe197a87f7adb2",
+  "status": "HOLD_NO_ORDERS",
+  "targets": {}
+ }
+]

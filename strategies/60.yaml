@@ -1,0 +1,81 @@
+# QuantConnect #60 "Conditional Sector Rotation" with SQQQ in place of TECS at the FINAL target only.
+# The tree, indicators and thresholds are frozen by the qc60 module (validate_spec) -- they cannot be tuned here.
+schema_version: 1
+id: QC_60_SQQQ
+name: "#60 Conditional Sector Rotation, TECS -> SQQQ final-target substitution"
+implementation: qc60
+version: 1.0.0
+fingerprint: sha256:9a4eed4dfa87bfe0908e8491254263894a854319daca495271583924a71ef7f9
+enabled: true
+live_eligible: false
+live_eligibility_note: >-
+  No live writer exists in this release. Also: BSV (bear-branch argmax target) has no human-verified eToro
+  instrument id, so a BSV target stays cash on eToro -- a documented divergence from the source.
+source:
+  reference: src/utengine/strategy_modules/vendor/QC_60_Original.py
+  sha256: fac0d6dbe1ddf831a90a7ed74dc251600239c5403a4c886a466b83aec390ea50
+  note: byte-identical capture of QuantConnect strategy 60 (quantconnect_exports/SOURCE_MANIFEST.json)
+indicators:
+  rsi_period: 10
+  rsi_type: wilder
+  spy_sma_period: 200
+  qqq_sma_period: 20
+  tqqq_sma_period: 20
+universe:
+  signal: [SPY, QQQ, TQQQ, UVXY, TECL, SPXL, SQQQ, TECS, BSV]
+  tradable: [TQQQ, UVXY, TECL, SPXL, SQQQ, BSV]
+substitutions:
+  TECS: SQQQ
+instruments:
+  TQQQ: {etoro_instrument_id: 4465, eligibility: VERIFIED_TRADABLE, settlement: CFD,
+         evidence: "GM leaf_reference (live market-hours search 2026-08-26); paper ELIG V-search"}
+  UVXY: {etoro_instrument_id: 3246, eligibility: VERIFIED_TRADABLE, settlement: CFD,
+         evidence: "GM leaf_reference; paper ELIG V-search"}
+  TECL: {etoro_instrument_id: 10855, eligibility: VERIFIED_TRADABLE, settlement: CFD,
+         evidence: "GM leaf_reference; paper ELIG V-search"}
+  SPXL: {etoro_instrument_id: 3230, eligibility: VERIFIED_TRADABLE, settlement: CFD,
+         evidence: "GM leaf_reference; paper ELIG V-search"}
+  SQQQ: {etoro_instrument_id: 4459, eligibility: VERIFIED_TRADABLE, settlement: CFD,
+         evidence: "traded in this account (GM trade history); paper ELIG V-trade"}
+  BSV: {etoro_instrument_id: null, eligibility: OWNER_OBSERVED, settlement: CFD,
+        evidence: "owner saw a trade page 2026-10-23 (CFD label); instrument id not human-verified"}
+eligibility:
+  required_status: VERIFIED_TRADABLE
+  allowed_settlement: [CFD, REAL]
+  max_leverage: 1
+  allow_short: false
+schedule:
+  calendar: XNYS
+  timezone: America/New_York
+  decision_time: "16:50"             # close + 50 min (13:50 on 13:00 early closes)
+  decision_deadline: "09:15"         # next session; a decision is never made after this
+  execution: next_regular_session_open
+  execution_delay_minutes: 1         # from 09:31 New York
+  execution_window_minutes: 60
+  missed_policy: skip
+allocation:
+  capital_fraction: 1.0
+  cash_buffer_pct: 0.0025            # LEAN FreePortfolioValuePercentage
+rebalancing:
+  min_order_usd: 10
+  min_order_pct_nav: 0.001           # LEAN MinimumOrderMarginPortfolioPercentage
+  liquidate_non_targets: true
+risk:
+  max_gross_exposure: 1.0
+  max_instrument_weight: 1.0
+execution:
+  mode: shadow
+  order_type: market
+  sequencing: sell_then_buy
+logging:
+  level: INFO
+  alerts: [discrepancy, halt, missed_cycle, unknown_order, external_activity, decision]
+settings:
+  bull_qqq_rsi_uvxy: 81
+  bull_spy_rsi_uvxy: 80
+  bear_tqqq_rsi_tecl: 30
+  bear_spy_rsi_spxl: 30
+  uvxy_rsi_high: 74
+  uvxy_rsi_extreme: 84
+  sqqq_rsi_tecs_extreme: 31
+  sqqq_rsi_tecs_otherwise: 34

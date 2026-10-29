@@ -1,0 +1,198 @@
+{
+ "1_two_strategies": {
+  "decisions": {
+   "QC_529_ETORO_RESTRICTED": "DECIDED",
+   "QC_60_SQQQ": "DECIDED"
+  },
+  "plans": 1,
+  "sleeves_after_day1": {
+   "QC_529_ETORO_RESTRICTED": {
+    "cash": 208.34,
+    "equity": 999.68,
+    "holdings": {
+     "TLT": {
+      "units": 1.530056,
+      "value": 124.95
+     },
+     "SQQQ": {
+      "units": 3.256253,
+      "value": 124.95
+     },
+     "TQQQ": {
+      "units": 6.696454,
+      "value": 458.15
+     },
+     "TECL": {
+      "units": 0.425068,
+      "value": 83.3
+     }
+    }
+   },
+   "QC_60_SQQQ": {
+    "cash": 2.5,
+    "equity": 999.6,
+    "holdings": {
+     "TQQQ": {
+      "units": 14.574025,
+      "value": 997.1
+     }
+    }
+   }
+  }
+ },
+ "2_shared_tqqq": {
+  "broker_tqqq_units": 21.270479,
+  "broker_tqqq_orders": 1,
+  "sleeve_tqqq_units": {
+   "QC_529_ETORO_RESTRICTED": 6.696454,
+   "QC_60_SQQQ": 14.574025
+  },
+  "sum_equals_broker": true
+ },
+ "5_combined_exposure": {
+  "broker_units": {
+   "TLT": 1.530056,
+   "SQQQ": 3.256253,
+   "TQQQ": 21.270479,
+   "TECL": 0.425068
+  },
+  "account_strategy_equity": 1999.28,
+  "sum_sleeve_equity": 1999.28
+ },
+ "3_verified_deposit": {
+  "deposit": 1000.0,
+  "cash_change": {
+   "QC_529_ETORO_RESTRICTED": 500.0,
+   "QC_60_SQQQ": 500.0
+  },
+  "flow": {
+   "kind": "DEPOSIT",
+   "amount": 1000.0,
+   "source": "broker:simulated",
+   "ref": "tx:T2"
+  }
+ },
+ "4_independent_pnl": {
+  "tqqq_move": "+5%",
+  "equity_change": {
+   "QC_529_ETORO_RESTRICTED": 22.91,
+   "QC_60_SQQQ": 49.86
+  }
+ },
+ "6_safe_rebalance": {
+  "forced": "#529 -> 100% cash; #60 decides normally (holds TQQQ)",
+  "plan_status": "DONE",
+  "broker_legs": [
+   {
+    "action": "CLOSE",
+    "symbol": "TLT",
+    "units": null,
+    "status": "RECONCILED"
+   },
+   {
+    "action": "CLOSE",
+    "symbol": "SQQQ",
+    "units": null,
+    "status": "RECONCILED"
+   },
+   {
+    "action": "CLOSE",
+    "symbol": "TECL",
+    "units": null,
+    "status": "RECONCILED"
+   },
+   {
+    "action": "OPEN",
+    "symbol": "TQQQ",
+    "units": null,
+    "status": "RECONCILED"
+   }
+  ],
+  "orders_sent": 4,
+  "529_after": {
+   "cash": 1499.68,
+   "equity": 1499.68,
+   "holdings": {}
+  },
+  "60_tqqq_units_before_after": [
+   14.574025,
+   21.863667
+  ]
+ },
+ "invariants_clean": true,
+ "audit_chain": "78 entries verified",
+ "7_restart_no_double_orders": {
+  "submissions_at_crash": 1,
+  "submissions_after": 4,
+  "unique_client_refs": true,
+  "reconciliation": "CLEAN",
+  "plans": 1
+ },
+ "8_unknown_close_outcome": {
+  "plan_status": "HALTED_RECONCILIATION",
+  "halts": [
+   "CASH_DISCREPANCY",
+   "CLOSE_PROCEEDS_UNKNOWN"
+  ],
+  "opens_started": 0,
+  "orders_sent_in_next_cycle": 0,
+  "open_exceptions": [
+   [
+    "CLOSE_PROCEEDS_UNKNOWN",
+    1
+   ],
+   [
+    "CASH_DISCREPANCY",
+    3
+   ]
+  ]
+ },
+ "9_takeover_preview": {
+  "broker_state_unchanged": true,
+  "broker_mutations": 0,
+  "gdx": {
+   "direction": "SHORT",
+   "leverage": 5,
+   "units": 45.788407,
+   "exposure_usd": 3663.53,
+   "owner": "PRE_EXISTING",
+   "est_close_proceeds": 810.27,
+   "proceeds_basis": "BROKER_UNREALIZED_PNL",
+   "est_realized_pnl": 64.56,
+   "financing": {
+    "daily_usd_estimate": 1.0087,
+    "annual_rate_observed": 0.1005
+   },
+   "action": "CLOSE"
+  },
+  "capital": {
+   "est_cash_after_closes": 2064.56,
+   "worst_case_cash_after_closes": 2055.4,
+   "indicative_cash_if_separate_items_closed_at_estimate": 2064.56,
+   "indicative_realized_pnl_separate_items": 0,
+   "investable_reserve_pct": 0.02,
+   "investable": 2014.29,
+   "est_realized_loss_usd": 0.0,
+   "est_costs_usd": 9.62,
+   "max_cost_floor_usd": 9.62
+  },
+  "allocation": {
+   "QC_529_ETORO_RESTRICTED": 1007.14,
+   "QC_60_SQQQ": 1007.14
+  },
+  "aggregate_targets": {
+   "SQQQ": 125.89,
+   "TECL": 83.93,
+   "TLT": 125.89,
+   "TQQQ": 1466.23
+  }
+ },
+ "10_takeover_stops_at_approval": {
+  "state": "APPROVAL_REQUIRED",
+  "advance_refusals": [
+   "approval DISABLE_OLD_WRITER is required (none VALID for TK05efe4ca0cf541)",
+   "approval DISABLE_OLD_WRITER is required (none VALID for TK05efe4ca0cf541)"
+  ],
+  "broker_state_unchanged": true
+ }
+}

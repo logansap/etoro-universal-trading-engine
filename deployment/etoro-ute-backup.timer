@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly eToro UTE backup (SQLite online backup API: consistent while the engine runs)
+
+[Timer]
+OnCalendar=*-*-* 23:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

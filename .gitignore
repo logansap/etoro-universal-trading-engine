@@ -1,0 +1,32 @@
+# runtime state, logs, backups and secrets never enter Git
+var/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+logs/
+backups/
+.env
+*.env
+secrets/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+
+# owner-provisioned credentials: never commit, never package (the rehearsal tarball honours .gitignore)
+private key*
+*.env
+readonly-credentials*
+
+# never publish: keys, logs, dashboard auth, bundles (public repository; see docs/DEPLOYMENT.md "Publication safety")
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+known_hosts
+*.log
+dashboard_auth.json
+*.bundle

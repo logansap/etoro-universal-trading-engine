@@ -1,0 +1,81 @@
+# QuantConnect #529 QuadEnsemble + velocity crash guard (multi-instrument). Logic = the hash-pinned frozen port.
+schema_version: 1
+id: QC_529
+name: "#529 QuadEnsemble (T10/T11/S2/S3 sleeves) + QQQ velocity crash guard"
+implementation: qc529
+version: 1.0.0
+fingerprint: sha256:8eb8ce86463946c5fd3fa25692b57c381c9f99048373930a39035abc676f5ebc
+enabled: true
+live_eligible: false
+live_eligibility_note: >-
+  Not live-eligible on this eToro account: 7 of its 19 target instruments (SOXL, LABU, SVIX, SVXY, BTAL, TECS,
+  BSV, UVIX ...) have no human-verified instrument id or are confirmed unavailable, so their weight would stay cash
+  and the book would diverge from the source. Usable in simulation and shadow (decisions) only.
+source:
+  reference: src/utengine/strategy_modules/vendor/QC_529_Original.py
+  sha256: 40c270b8fc67f47a253b5947a9e0f729a6dbf98dca7e62e4b2e3bc4439c74ec6
+  note: logic executed by vendor/tsr_frozen/ports.py S529 (sha256 0453c1ea...)
+indicators: {}
+universe:
+  signal: [TQQQ, TECL, SOXL, SQQQ, UVXY, SVIX, SVXY, XLK, KMLM, TLT, QQQE, VTV, VOX, VOOG, VOOV, XLP, XLY, FAS,
+           SPXL, LABU, SPY, IOO, XLF, TECS, SOXS, QQQ, PSQ, QLD, BTAL, BIL, AGG, SH, BND, IEF, BSV, SMH, UVIX]
+  tradable: [UVXY, TECL, SOXL, SPXL, LABU, SVIX, SVXY, SQQQ, TLT, BIL, BTAL, TQQQ, TECS, SOXS, QQQ, PSQ, QLD,
+             BSV, UVIX]
+substitutions: {}
+instruments:
+  UVXY: {etoro_instrument_id: 3246, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  TECL: {etoro_instrument_id: 10855, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  SPXL: {etoro_instrument_id: 3230, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  SQQQ: {etoro_instrument_id: 4459, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "traded (GM)"}
+  TLT: {etoro_instrument_id: 3020, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  BIL: {etoro_instrument_id: 4407, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  TQQQ: {etoro_instrument_id: 4465, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  SOXS: {etoro_instrument_id: 3227, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "traded (GM)"}
+  QQQ: {etoro_instrument_id: 3006, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "traded (GM)"}
+  PSQ: {etoro_instrument_id: 2192, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  QLD: {etoro_instrument_id: 15727, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  SOXL: {etoro_instrument_id: null, eligibility: OWNER_OBSERVED, settlement: CFD, evidence: "owner trade page 2026-10-23"}
+  LABU: {etoro_instrument_id: null, eligibility: OWNER_OBSERVED, settlement: CFD, evidence: "owner trade page (LABU.US)"}
+  SVXY: {etoro_instrument_id: null, eligibility: OWNER_OBSERVED, settlement: CFD, evidence: "owner trade page 2026-10-23"}
+  BSV: {etoro_instrument_id: null, eligibility: OWNER_OBSERVED, settlement: CFD, evidence: "owner trade page 2026-10-23"}
+  SVIX: {etoro_instrument_id: null, eligibility: VERIFIED_UNAVAILABLE, settlement: UNKNOWN, evidence: "owner: unavailable 2026-10-23"}
+  UVIX: {etoro_instrument_id: null, eligibility: VERIFIED_UNAVAILABLE, settlement: UNKNOWN, evidence: "owner: unavailable 2026-10-23"}
+  BTAL: {etoro_instrument_id: null, eligibility: VERIFIED_UNAVAILABLE, settlement: UNKNOWN, evidence: "absent from search twice (GM)"}
+  TECS: {etoro_instrument_id: null, eligibility: VERIFIED_UNAVAILABLE, settlement: UNKNOWN, evidence: "absent from search twice (GM)"}
+eligibility:
+  required_status: VERIFIED_TRADABLE
+  allowed_settlement: [CFD, REAL]
+  max_leverage: 1
+  allow_short: false
+schedule:
+  calendar: XNYS
+  timezone: America/New_York
+  decision_time: "16:50"
+  decision_deadline: "09:15"
+  execution: next_regular_session_open     # source: market_on_open orders
+  execution_delay_minutes: 1
+  execution_window_minutes: 60
+  missed_policy: skip
+allocation:
+  capital_fraction: 1.0
+  cash_buffer_pct: 0.0                      # source: no buffer
+rebalancing:
+  min_order_usd: 10
+  min_order_pct_nav: 0.0                    # source: minimum_order_margin_portfolio_percentage = 0
+  liquidate_non_targets: true
+risk:
+  max_gross_exposure: 1.0
+  max_instrument_weight: 1.0              # the source has no per-instrument cap
+execution:
+  mode: shadow
+  order_type: market
+  sequencing: sell_then_buy
+logging:
+  level: INFO
+  alerts: [discrepancy, halt, missed_cycle, unknown_order, external_activity, decision]
+settings:
+  crash_entry: -0.10
+  crash_exit: -0.04
+  crash_lookback: 10
+  crash_gross: 0.5
+  sleeve_weight: 0.25

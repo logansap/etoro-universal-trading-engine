@@ -1,0 +1,37 @@
+# eToro Universal Trading Engine -- read-only dashboard (docs/DASHBOARD_SECURITY.md). Binds 127.0.0.1:8790 only;
+# reach it through an SSH tunnel. It loads NO broker credential (no EnvironmentFile), opens the engine database
+# read-only, and has no order, approval or takeover route. Enabled by sync_vps.sh only after the owner has set the
+# dashboard password. Same filesystem isolation as etoro-ute.service (Gold Miner's /home/engine is not visible).
+[Unit]
+Description=eToro Universal Trading Engine dashboard (read-only, loopback only)
+After=network-online.target etoro-ute.service
+
+[Service]
+Type=simple
+User=ute
+Group=ute
+Environment=UTE_HOME=/home/ute/data
+Environment=UTE_BACKUP_DIR=/home/ute/backups/nightly
+ExecStart=/home/ute/venv/bin/trading-engine --config /etc/etoro-ute/engine.yaml --home /home/ute/data dashboard serve --host 127.0.0.1 --port 8790
+Restart=on-failure
+RestartSec=10
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/ute
+BindPaths=/home/ute/data
+InaccessiblePaths=-/home/engine
+ReadOnlyPaths=/etc/etoro-ute
+PrivateTmp=yes
+UMask=0027
+NoNewPrivileges=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

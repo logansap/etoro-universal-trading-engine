@@ -1,0 +1,21 @@
+[Unit]
+Description=eToro UTE: notify that the engine service failed (OnFailure hook)
+
+[Service]
+Type=oneshot
+User=ute
+Group=ute
+Environment=UTE_HOME=/home/ute/data
+Environment=UTE_LOG_DIR=/home/ute/logs
+Environment=UTE_CONFIG=/etc/etoro-ute/engine.yaml
+EnvironmentFile=-/etc/etoro-ute/ops.env
+ExecStart=/home/ute/venv/bin/trading-engine notify crash --unit etoro-ute.service
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/ute
+BindPaths=/home/ute/data /home/ute/logs
+InaccessiblePaths=-/home/engine
+ReadOnlyPaths=/etc/etoro-ute
+PrivateTmp=yes
+NoNewPrivileges=yes
+UMask=0027

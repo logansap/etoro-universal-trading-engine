@@ -1,0 +1,545 @@
+{
+ "generated_from": "2026-10-29T19:23:41.120752+00:00",
+ "key_check": "READ_ONLY",
+ "max_quote_age_s": 120,
+ "rows": [
+  {
+   "symbol": "BIL",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 4407,
+   "etoro_symbol": "BIL",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 91.67,
+   "ask": 91.68,
+   "spread_bp": 1.09,
+   "quote_at": "2026-10-29T17:27:32.8603067Z",
+   "quote_age_s": 6975,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "BSV",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 4296,
+   "etoro_symbol": "BSV",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 76.86,
+   "ask": 76.87,
+   "spread_bp": 1.3,
+   "quote_at": "2026-10-29T17:36:42.3610576Z",
+   "quote_age_s": 6426,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "BTAL",
+   "used_by": [
+    "529"
+   ],
+   "api_status": "UNAVAILABLE",
+   "reason": "exact-ticker search: no match",
+   "searched_at": "2026-10-29T19:23:42.124537+00:00"
+  },
+  {
+   "symbol": "LABU",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 3199,
+   "etoro_symbol": "LABU.US",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 256.84,
+   "ask": 257.65,
+   "spread_bp": 31.49,
+   "quote_at": "2026-10-29T16:54:40.1342951Z",
+   "quote_age_s": 8948,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "PSQ",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 2192,
+   "etoro_symbol": "PSQ",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 25.76,
+   "ask": 25.77,
+   "spread_bp": 3.88,
+   "quote_at": "2026-10-29T17:36:44.6026586Z",
+   "quote_age_s": 6423,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "QLD",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 15727,
+   "etoro_symbol": "QLD",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 88.31,
+   "ask": 88.32,
+   "spread_bp": 1.13,
+   "quote_at": "2026-10-29T18:21:42.4661244Z",
+   "quote_age_s": 3726,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "QQQ",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 3006,
+   "etoro_symbol": "QQQ",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 714.37,
+   "ask": 714.41,
+   "spread_bp": 0.56,
+   "quote_at": "2026-10-29T17:36:44.6785949Z",
+   "quote_age_s": 6423,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "SOXL",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 3226,
+   "etoro_symbol": "SOXL",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 102.68,
+   "ask": 102.72,
+   "spread_bp": 3.89,
+   "quote_at": "2026-10-29T16:54:40.2774053Z",
+   "quote_age_s": 8948,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "SOXS",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 3227,
+   "etoro_symbol": "SOXS",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 41.59,
+   "ask": 41.6,
+   "spread_bp": 2.4,
+   "quote_at": "2026-10-29T16:54:39.6320374Z",
+   "quote_age_s": 8948,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "SPXL",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 3230,
+   "etoro_symbol": "SPXL",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 285.2,
+   "ask": 285.29,
+   "spread_bp": 3.16,
+   "quote_at": "2026-10-29T16:54:40.4819971Z",
+   "quote_age_s": 8948,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "SQQQ",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 4459,
+   "etoro_symbol": "SQQQ",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 38.13,
+   "ask": 38.15,
+   "spread_bp": 5.24,
+   "quote_at": "2026-10-29T19:23:47.3254792Z",
+   "quote_age_s": 1,
+   "quote_fresh": true
+  },
+  {
+   "symbol": "SVIX",
+   "used_by": [
+    "529"
+   ],
+   "api_status": "UNAVAILABLE",
+   "reason": "exact-ticker search: no match",
+   "searched_at": "2026-10-29T19:23:45.961905+00:00"
+  },
+  {
+   "symbol": "SVXY",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 3236,
+   "etoro_symbol": "SVXY",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 63.78,
+   "ask": 63.79,
+   "spread_bp": 1.57,
+   "quote_at": "2026-10-29T16:54:36.2053929Z",
+   "quote_age_s": 8952,
+   "quote_fresh": false
+  },
+  {
+   "symbol": "TECL",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 10855,
+   "etoro_symbol": "TECL",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 200.57,
+   "ask": 200.83,
+   "spread_bp": 12.95,
+   "quote_at": "2026-10-29T19:23:47.3134574Z",
+   "quote_age_s": 1,
+   "quote_fresh": true
+  },
+  {
+   "symbol": "TECS",
+   "used_by": [
+    "529"
+   ],
+   "api_status": "UNAVAILABLE",
+   "reason": "exact-ticker search: no match",
+   "searched_at": "2026-10-29T19:23:46.589173+00:00"
+  },
+  {
+   "symbol": "TLT",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 3020,
+   "etoro_symbol": "TLT",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 81.46,
+   "ask": 81.47,
+   "spread_bp": 1.23,
+   "quote_at": "2026-10-29T19:23:47.4785443Z",
+   "quote_age_s": 1,
+   "quote_fresh": true
+  },
+  {
+   "symbol": "TQQQ",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 4465,
+   "etoro_symbol": "TQQQ",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [
+    1,
+    2,
+    5
+   ],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 68.64,
+   "ask": 68.65,
+   "spread_bp": 1.46,
+   "quote_at": "2026-10-29T19:23:47.8739529Z",
+   "quote_age_s": 0,
+   "quote_fresh": true
+  },
+  {
+   "symbol": "UVIX",
+   "used_by": [
+    "529"
+   ],
+   "api_status": "UNAVAILABLE",
+   "reason": "exact-ticker search: no match",
+   "searched_at": "2026-10-29T19:23:47.102123+00:00"
+  },
+  {
+   "symbol": "UVXY",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 3246,
+   "etoro_symbol": "UVXY",
+   "api_status": "VERIFIED",
+   "settlement": [
+    "cfd"
+   ],
+   "long_leverage": [
+    1,
+    2,
+    5
+   ],
+   "short_leverage": [],
+   "min_position_usd": 10.0,
+   "units": "fractional",
+   "requires_w8ben": true,
+   "bid": 16.87,
+   "ask": 16.88,
+   "spread_bp": 5.93,
+   "quote_at": "2026-10-29T16:54:40.2779011Z",
+   "quote_age_s": 8948,
+   "quote_fresh": false
+  }
+ ],
+ "summary": {
+  "VERIFIED": [
+   "BIL",
+   "BSV",
+   "LABU",
+   "PSQ",
+   "QLD",
+   "QQQ",
+   "SOXL",
+   "SOXS",
+   "SPXL",
+   "SQQQ",
+   "SVXY",
+   "TECL",
+   "TLT",
+   "TQQQ",
+   "UVXY"
+  ],
+  "UNAVAILABLE": [
+   "BTAL",
+   "SVIX",
+   "TECS",
+   "UVIX"
+  ],
+  "NOT_TRADABLE": [],
+  "STALE_QUOTE": [
+   "BIL",
+   "BSV",
+   "LABU",
+   "PSQ",
+   "QLD",
+   "QQQ",
+   "SOXL",
+   "SOXS",
+   "SPXL",
+   "SVXY",
+   "UVXY"
+  ]
+ }
+}

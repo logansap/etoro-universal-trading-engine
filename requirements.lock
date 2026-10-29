@@ -1,0 +1,6 @@
+# Exact versions the release candidate was tested with (Windows CPython 3.13.14 and Ubuntu CPython 3.14.4).
+PyYAML==6.0.3
+numpy==2.4.6
+pandas==3.0.3
+tzdata==2026.2
+pytest==8.4.2

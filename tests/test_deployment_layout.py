@@ -1,0 +1,77 @@
+"""The VPS layout (deployment/layout.sh) and the systemd units agree, and every unit keeps the filesystem isolation:
+/home is an empty tmpfs with only /home/ute bound back (read-only) plus the unit's own writable state directories;
+Gold Miner's /home/engine is never visible. Static checks; the container rehearsal proves them on systemd."""
+import configparser
+import pathlib
+import re
+import shutil
+import subprocess
+
+import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+DEP = ROOT / "deployment"
+LAYOUT = dict(re.findall(r"^(UTE_[A-Z_]+|GM_[A-Z_]+)=(\S+)$", (DEP / "layout.sh").read_text(), re.M))
+
+
+def resolve(v: str) -> str:
+    return re.sub(r"\$(\w+)", lambda m: resolve(LAYOUT[m.group(1)]), v)
+
+
+L = {k: resolve(v) for k, v in LAYOUT.items()}
+UNITS = sorted(p for p in DEP.glob("etoro-ute*.*") if p.suffix in (".service", ".timer"))
+WRITABLE = {L["UTE_DATA"], L["UTE_LOGS"], L["UTE_NIGHTLY"]}
+
+
+def unit(p):
+    c = configparser.ConfigParser(strict=False, interpolation=None)
+    c.optionxform = str
+    c.read_string(p.read_text())
+    return c
+
+
+def test_layout_paths_are_under_home_ute_and_never_under_gold_miner():
+    assert L["UTE_ROOT"] == "/home/ute" and L["UTE_CHECKOUT"] == "/home/ute/etoro-universal-trading-engine"
+    assert (L["UTE_DATA"], L["UTE_LOGS"], L["UTE_BACKUPS"]) == ("/home/ute/data", "/home/ute/logs", "/home/ute/backups")
+    assert L["UTE_CRED"] == "/etc/etoro-ute/readonly-credentials.env"
+    assert all(not v.startswith(L["GM_ROOT"]) for k, v in L.items() if k.startswith("UTE_"))
+
+
+def test_layout_unit_list_matches_the_shipped_units():
+    m = re.search(r'UTE_UNITS="([^"]+)"', (DEP / "layout.sh").read_text())
+    assert sorted(m.group(1).split()) == sorted(p.name for p in UNITS)
+
+
+@pytest.mark.parametrize("p", [p for p in UNITS if p.suffix == ".service"], ids=lambda p: p.name)
+def test_every_service_is_isolated_from_gold_miner(p):
+    s = unit(p)["Service"]
+    text = p.read_text()
+    assert "/opt/etoro-ute" not in text and "/var/lib/etoro-ute" not in text
+    assert s["User"] == "ute" and s["ProtectSystem"] == "strict" and s["ProtectHome"] == "tmpfs"
+    assert s["BindReadOnlyPaths"] == L["UTE_ROOT"] and s["InaccessiblePaths"] == "-" + L["GM_ROOT"]
+    assert set(s["BindPaths"].split()) <= WRITABLE and L["UTE_DATA"] in s["BindPaths"].split()
+    assert s.get("NoNewPrivileges") == "yes" and "ReadOnlyPaths" in s
+    for exe in re.findall(r"^Exec\w+=(\S+)", text, re.M):
+        assert exe.startswith(L["UTE_VENV"] + "/bin/"), exe
+    assert s.get("Environment") and "UTE_HOME=" + L["UTE_DATA"] in text
+
+
+def test_dashboard_unit_loads_no_credentials_and_binds_loopback():
+    text = (DEP / "etoro-ute-dashboard.service").read_text()
+    assert "EnvironmentFile" not in unit(DEP / "etoro-ute-dashboard.service")["Service"] and "--host 127.0.0.1" in text and "BindPaths=/home/ute/data\n" in text
+
+
+def test_sync_never_pulls_resets_or_pushes():
+    text = (DEP / "sync_vps.sh").read_text()
+    code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    for banned in ("git pull", " pull ", "reset --hard", " push", "--force", "clean -f"):
+        assert banned not in code, banned
+    assert "flock -n" in code and "checkout --quiet --detach" in code and "archive" in code
+
+
+@pytest.mark.skipif(not shutil.which("bash") or not shutil.which("sh"), reason="needs bash")
+@pytest.mark.parametrize("script", ["layout.sh", "install.sh", "sync_vps.sh", "verify_vps.sh", "rollback.sh",
+                                    "uninstall.sh", "vps_preflight.sh"])
+def test_deployment_scripts_parse(script):
+    r = subprocess.run(["bash", "-n", str(DEP / script)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr

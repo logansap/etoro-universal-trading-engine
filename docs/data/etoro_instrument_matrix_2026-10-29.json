@@ -1,0 +1,717 @@
+{
+ "generated_utc": "2026-10-28T20:10:33.353889+00:00",
+ "account": "eToro REAL (EEA retail)",
+ "live_api_available_to_engine": false,
+ "why": "no read-only key provisioned; eToro MCP connector invalidated; GM audit command has no eligibility",
+ "summary": {
+  "VERIFIED": [
+   "BIL",
+   "PSQ",
+   "QLD",
+   "QQQ",
+   "SOXS",
+   "SPXL",
+   "SQQQ",
+   "TECL",
+   "TLT",
+   "TQQQ",
+   "UVXY"
+  ],
+  "UNAVAILABLE": [
+   "BTAL",
+   "TECS"
+  ],
+  "UNVERIFIED": [
+   "BSV",
+   "LABU",
+   "SOXL",
+   "SVIX",
+   "SVXY",
+   "UVIX"
+  ]
+ },
+ "instruments": [
+  {
+   "symbol": "BIL",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 4407,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 1.09,
+   "etoro_quote_at": "2026-08-26T14:31:43.3717869Z",
+   "etoro_quote_age_s": 23.2,
+   "financing": "x1 long: 0 per eToro's published CFD fee page; not observed on this instrument",
+   "evidence": [
+    "A: account search 2026-08-26T14:31:43.3717869Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 1.09,
+    "samples": 156,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 4407,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "BSV",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": null,
+   "api_status": "UNVERIFIED (no API evidence for this account)",
+   "available": null,
+   "long": null,
+   "short": null,
+   "execution": null,
+   "leverage_long": null,
+   "margin": null,
+   "min_order_usd": null,
+   "etoro_spread_bp": null,
+   "etoro_quote_at": null,
+   "etoro_quote_age_s": null,
+   "financing": null,
+   "evidence": [
+    "C: owner UI 2026-10-23: trade page shown (CFD label)"
+   ],
+   "verified_at": null,
+   "owner_ui_2026_10_23": "trade page shown (CFD label)",
+   "in_gold_miner_eligibility_scope": false,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 1.3,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": null,
+    "eligibility": "OWNER_OBSERVED"
+   }
+  },
+  {
+   "symbol": "BTAL",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": null,
+   "api_status": "UNAVAILABLE (account search: no match, 2026-08-26)",
+   "available": false,
+   "long": false,
+   "short": null,
+   "execution": null,
+   "leverage_long": null,
+   "margin": null,
+   "min_order_usd": null,
+   "etoro_spread_bp": null,
+   "etoro_quote_at": null,
+   "etoro_quote_age_s": null,
+   "financing": null,
+   "evidence": [
+    "A: no non-crypto exact/US match"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 7.73,
+    "samples": 144,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": null,
+    "eligibility": "VERIFIED_UNAVAILABLE"
+   }
+  },
+  {
+   "symbol": "LABU",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": null,
+   "api_status": "UNVERIFIED (no API evidence for this account)",
+   "available": null,
+   "long": null,
+   "short": null,
+   "execution": null,
+   "leverage_long": null,
+   "margin": null,
+   "min_order_usd": null,
+   "etoro_spread_bp": null,
+   "etoro_quote_at": null,
+   "etoro_quote_age_s": null,
+   "financing": null,
+   "evidence": [
+    "C: owner UI 2026-10-23: trade page shown (LABU.US, CFD label)"
+   ],
+   "verified_at": null,
+   "owner_ui_2026_10_23": "trade page shown (LABU.US, CFD label)",
+   "in_gold_miner_eligibility_scope": false,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 72.95,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": null,
+    "eligibility": "OWNER_OBSERVED"
+   }
+  },
+  {
+   "symbol": "PSQ",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 2192,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 3.83,
+   "etoro_quote_at": "2026-08-26T14:31:56.8367765Z",
+   "etoro_quote_age_s": 9.7,
+   "financing": "x1 long: 0 per eToro's published CFD fee page; not observed on this instrument",
+   "evidence": [
+    "A: account search 2026-08-26T14:31:56.8367765Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 3.92,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 2192,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "QLD",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 15727,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 1.13,
+   "etoro_quote_at": "2026-08-26T14:31:57.1218023Z",
+   "etoro_quote_age_s": 9.5,
+   "financing": "x1 long: 0 per eToro's published CFD fee page; not observed on this instrument",
+   "evidence": [
+    "A: account search 2026-08-26T14:31:57.1218023Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 2.21,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 15727,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "QQQ",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 3006,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 0.42,
+   "etoro_quote_at": "2026-08-26T14:31:57.6976625Z",
+   "etoro_quote_age_s": 8.9,
+   "financing": "x1 long overnight fee observed 0 in this account",
+   "evidence": [
+    "A: account search 2026-08-26T14:31:57.6976625Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 0.69,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 3006,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "SOXL",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": null,
+   "api_status": "UNVERIFIED (no API evidence for this account)",
+   "available": null,
+   "long": null,
+   "short": null,
+   "execution": null,
+   "leverage_long": null,
+   "margin": null,
+   "min_order_usd": null,
+   "etoro_spread_bp": null,
+   "etoro_quote_at": null,
+   "etoro_quote_age_s": null,
+   "financing": null,
+   "evidence": [
+    "C: owner UI 2026-10-23: trade page shown"
+   ],
+   "verified_at": null,
+   "owner_ui_2026_10_23": "trade page shown",
+   "in_gold_miner_eligibility_scope": false,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 6.05,
+    "samples": 157,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": null,
+    "eligibility": "OWNER_OBSERVED"
+   }
+  },
+  {
+   "symbol": "SOXS",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 3227,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 4.02,
+   "etoro_quote_at": "2026-08-26T14:26:41.7606126Z",
+   "etoro_quote_age_s": 324.8,
+   "financing": "x1 long overnight fee observed 0 in this account",
+   "evidence": [
+    "A: account search 2026-08-26T14:26:41.7606126Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 4.67,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 3227,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "SPXL",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 3230,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 2.45,
+   "etoro_quote_at": "2026-08-26T14:26:42.2417457Z",
+   "etoro_quote_age_s": 324.3,
+   "financing": "x1 long: 0 per eToro's published CFD fee page; not observed on this instrument",
+   "evidence": [
+    "A: account search 2026-08-26T14:26:42.2417457Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 2.82,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 3230,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "SQQQ",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 4459,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 5.03,
+   "etoro_quote_at": "2026-08-26T14:31:59.7981699Z",
+   "etoro_quote_age_s": 6.8,
+   "financing": "x1 long overnight fee observed 0 in this account",
+   "evidence": [
+    "A: account search 2026-08-26T14:31:59.7981699Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 2.71,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 4459,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "SVIX",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": null,
+   "api_status": "UNVERIFIED (no API evidence for this account)",
+   "available": null,
+   "long": null,
+   "short": null,
+   "execution": null,
+   "leverage_long": null,
+   "margin": null,
+   "min_order_usd": null,
+   "etoro_spread_bp": null,
+   "etoro_quote_at": null,
+   "etoro_quote_age_s": null,
+   "financing": null,
+   "evidence": [
+    "C: owner UI 2026-10-23: unavailable"
+   ],
+   "verified_at": null,
+   "owner_ui_2026_10_23": "unavailable",
+   "in_gold_miner_eligibility_scope": false,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 3.66,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": null,
+    "eligibility": "VERIFIED_UNAVAILABLE"
+   }
+  },
+  {
+   "symbol": "SVXY",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": null,
+   "api_status": "UNVERIFIED (no API evidence for this account)",
+   "available": null,
+   "long": null,
+   "short": null,
+   "execution": null,
+   "leverage_long": null,
+   "margin": null,
+   "min_order_usd": null,
+   "etoro_spread_bp": null,
+   "etoro_quote_at": null,
+   "etoro_quote_age_s": null,
+   "financing": null,
+   "evidence": [
+    "C: owner UI 2026-10-23: trade page shown"
+   ],
+   "verified_at": null,
+   "owner_ui_2026_10_23": "trade page shown",
+   "in_gold_miner_eligibility_scope": false,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 3.19,
+    "samples": 144,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": null,
+    "eligibility": "OWNER_OBSERVED"
+   }
+  },
+  {
+   "symbol": "TECL",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 10855,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 14.81,
+   "etoro_quote_at": "2026-08-26T14:32:00.7705162Z",
+   "etoro_quote_age_s": 5.8,
+   "financing": "x1 long: 0 per eToro's published CFD fee page; not observed on this instrument",
+   "evidence": [
+    "A: account search 2026-08-26T14:32:00.7705162Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 14.31,
+    "samples": 144,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 10855,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "TECS",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": null,
+   "api_status": "UNAVAILABLE (account search: no match, 2026-08-26)",
+   "available": false,
+   "long": false,
+   "short": null,
+   "execution": null,
+   "leverage_long": null,
+   "margin": null,
+   "min_order_usd": null,
+   "etoro_spread_bp": null,
+   "etoro_quote_at": null,
+   "etoro_quote_age_s": null,
+   "financing": null,
+   "evidence": [
+    "A: no non-crypto exact/US match"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 23.95,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": null,
+    "eligibility": "VERIFIED_UNAVAILABLE"
+   }
+  },
+  {
+   "symbol": "TLT",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": 3020,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 1.2,
+   "etoro_quote_at": "2026-08-26T14:32:01.2327455Z",
+   "etoro_quote_age_s": 5.4,
+   "financing": "x1 long: 0 per eToro's published CFD fee page; not observed on this instrument",
+   "evidence": [
+    "A: account search 2026-08-26T14:32:01.2327455Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 1.23,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 3020,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "TQQQ",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 4465,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 1.43,
+   "etoro_quote_at": "2026-08-26T14:32:02.6494789Z",
+   "etoro_quote_age_s": 3.9,
+   "financing": "x1 long: 0 per eToro's published CFD fee page; not observed on this instrument",
+   "evidence": [
+    "A: account search 2026-08-26T14:32:02.6494789Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 1.41,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 4465,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  },
+  {
+   "symbol": "UVIX",
+   "used_by": [
+    "529"
+   ],
+   "instrument_id": null,
+   "api_status": "UNVERIFIED (no API evidence for this account)",
+   "available": null,
+   "long": null,
+   "short": null,
+   "execution": null,
+   "leverage_long": null,
+   "margin": null,
+   "min_order_usd": null,
+   "etoro_spread_bp": null,
+   "etoro_quote_at": null,
+   "etoro_quote_age_s": null,
+   "financing": null,
+   "evidence": [
+    "C: owner UI 2026-10-23: unavailable"
+   ],
+   "verified_at": null,
+   "owner_ui_2026_10_23": "unavailable",
+   "in_gold_miner_eligibility_scope": false,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 28.66,
+    "samples": 158,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": null,
+    "eligibility": "VERIFIED_UNAVAILABLE"
+   }
+  },
+  {
+   "symbol": "UVXY",
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "instrument_id": 3246,
+   "api_status": "VERIFIED (account search 2026-08-26; eligibility pattern 2026-08-27; >60 days old)",
+   "available": true,
+   "long": true,
+   "short": "CFD x1/x2/x5 (eligibility pattern, Gold Miner 2026-08-27)",
+   "execution": "CFD (no ETF offered `real` settlement on this EEA account)",
+   "leverage_long": "x1 (cfd), x2/x5 (cfd)",
+   "margin": "amount = exposure / leverage (x1: 100%)",
+   "min_order_usd": 10.0,
+   "etoro_spread_bp": 5.26,
+   "etoro_quote_at": "2026-08-26T14:26:44.9384412Z",
+   "etoro_quote_age_s": 321.6,
+   "financing": "x1 long: 0 per eToro's published CFD fee page; not observed on this instrument",
+   "evidence": [
+    "A: account search 2026-08-26T14:26:44.9384412Z",
+    "B: eligibility pattern 2026-08-27 (Gold Miner)"
+   ],
+   "verified_at": "2026-08-26T14:32:06.583087+00:00",
+   "owner_ui_2026_10_23": null,
+   "in_gold_miner_eligibility_scope": true,
+   "iex_context": {
+    "median_spread_bp_regular_hours": 5.64,
+    "samples": 144,
+    "latest_ok_quote": "2026-10-28T19:01:50+00:00",
+    "note": "IEX single-venue quote via Alpaca: market context, NOT an eToro quote"
+   },
+   "engine_yaml_status": {
+    "etoro_instrument_id": 3246,
+    "eligibility": "VERIFIED_TRADABLE"
+   }
+  }
+ ]
+}

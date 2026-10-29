@@ -1,0 +1,27 @@
+[Unit]
+Description=eToro UTE nightly backup + restore verification (local; off-host only to an owner-approved target)
+
+[Service]
+Type=oneshot
+User=ute
+Group=ute
+Environment=UTE_HOME=/home/ute/data
+Environment=UTE_LOG_DIR=/home/ute/logs
+Environment=UTE_BACKUP_DIR=/home/ute/backups/nightly
+Environment=UTE_CONFIG=/etc/etoro-ute/engine.yaml
+# UTE_BACKUP_OFFSITE_TARGET (and UTE_ALERT_WEBHOOK_URL) live here, never in YAML or Git
+EnvironmentFile=-/etc/etoro-ute/ops.env
+# backup + restore drill on the local copy; with backup.offsite_method != none also push, pull back and re-verify.
+# A failed verification exits 1 and raises a BACKUP_FAILED alert.
+ExecStart=/home/ute/venv/bin/trading-engine backup --to /home/ute/backups/nightly --offsite
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/ute
+BindPaths=/home/ute/data /home/ute/logs /home/ute/backups/nightly
+InaccessiblePaths=-/home/engine
+ReadOnlyPaths=/etc/etoro-ute
+# an off-host target mounted at the conventional path (NFS/sshfs/rclone) must be writable; '-' = optional
+ReadWritePaths=-/mnt/etoro-ute-offsite
+PrivateTmp=yes
+NoNewPrivileges=yes
+UMask=0027

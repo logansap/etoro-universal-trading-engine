@@ -1,0 +1,1061 @@
+{
+ "generated_at": "2026-10-29T19:23:41.120752+00:00",
+ "key_check": {
+  "status": "READ_ONLY",
+  "scopes": [
+   "etoro-public:agent-portfolio:read",
+   "etoro-public:club:read",
+   "etoro-public:crypto:read",
+   "etoro-public:feed:read",
+   "etoro-public:market-data:read",
+   "etoro-public:money.balance:read",
+   "etoro-public:money.cash-transactions:read",
+   "etoro-public:notifications:read",
+   "etoro-public:pi-data:read",
+   "etoro-public:pnl-alerts:read",
+   "etoro-public:sso-applications:read",
+   "etoro-public:sso-scopes:read",
+   "etoro-public:trade.demo:read",
+   "etoro-public:trade.real:read",
+   "etoro-public:user-info:read",
+   "etoro-public:watchlist:read"
+  ]
+ },
+ "source": "eToro public API, engine read-only key (EtoroReadOnly)",
+ "instruments": {
+  "BIL": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:41.753543+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 4407,
+     "internalSymbolFull": "BIL",
+     "internalInstrumentDisplayName": "SPDR Bloomberg 1-3 Month T-Bill ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "NYSE",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 4407,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 21858.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 91.67,
+    "ask": 91.68,
+    "date": "2026-10-29T17:27:32.8603067Z"
+   }
+  },
+  "BSV": {
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "search_at": "2026-10-29T19:23:41.958166+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 4296,
+     "internalSymbolFull": "BSV",
+     "internalInstrumentDisplayName": "Vanguard Short-Term Bond ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "NYSE",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 4296,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 26185.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 76.86,
+    "ask": 76.87,
+    "date": "2026-10-29T17:36:42.3610576Z"
+   }
+  },
+  "BTAL": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:42.124537+00:00",
+   "search": []
+  },
+  "LABU": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:42.539837+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 3199,
+     "internalSymbolFull": "LABU.US",
+     "internalInstrumentDisplayName": "Direxion Daily S&P Biotech Bull 3X ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "NYSE",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 3199,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 8238.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 256.84,
+    "ask": 257.65,
+    "date": "2026-10-29T16:54:40.1342951Z"
+   }
+  },
+  "PSQ": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:42.732565+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 2192,
+     "internalSymbolFull": "PSQ",
+     "internalInstrumentDisplayName": "ProShares Short QQQ ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "NYSE",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 2192,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 81700.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 25.76,
+    "ask": 25.77,
+    "date": "2026-10-29T17:36:44.6026586Z"
+   }
+  },
+  "QLD": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:42.898150+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 15727,
+     "internalSymbolFull": "QLD",
+     "internalInstrumentDisplayName": "ProShares Ultra QQQ",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "NYSE",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 15727,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 1017.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 88.31,
+    "ask": 88.32,
+    "date": "2026-10-29T18:21:42.4661244Z"
+   }
+  },
+  "QQQ": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:43.099029+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 3006,
+     "internalSymbolFull": "QQQ",
+     "internalInstrumentDisplayName": "Invesco QQQ",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "Nasdaq",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 3006,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 1332.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 714.37,
+    "ask": 714.41,
+    "date": "2026-10-29T17:36:44.6785949Z"
+   }
+  },
+  "SOXL": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:45.266408+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 3226,
+     "internalSymbolFull": "SOXL",
+     "internalInstrumentDisplayName": "Direxion Daily Semiconductor Bull 3X ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "NYSE",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 3226,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 14304.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 102.68,
+    "ask": 102.72,
+    "date": "2026-10-29T16:54:40.2774053Z"
+   }
+  },
+  "SOXS": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:45.439557+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 3227,
+     "internalSymbolFull": "SOXS",
+     "internalInstrumentDisplayName": " Direxion Daily Semiconductor Bear 3X ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "NYSE",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 3227,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 58123.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 41.59,
+    "ask": 41.6,
+    "date": "2026-10-29T16:54:39.6320374Z"
+   }
+  },
+  "SPXL": {
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "search_at": "2026-10-29T19:23:45.610609+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 3230,
+     "internalSymbolFull": "SPXL",
+     "internalInstrumentDisplayName": "Direxion Daily S&P 500 Bull 3X ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "NYSE",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 3230,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 6713.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 285.2,
+    "ask": 285.29,
+    "date": "2026-10-29T16:54:40.4819971Z"
+   }
+  },
+  "SQQQ": {
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "search_at": "2026-10-29T19:23:45.791927+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 4459,
+     "internalSymbolFull": "SQQQ",
+     "internalInstrumentDisplayName": "ProShares UltraPro Short QQQ",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "Nasdaq",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 4459,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 60699.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 38.13,
+    "ask": 38.15,
+    "date": "2026-10-29T19:23:47.3254792Z"
+   }
+  },
+  "SVIX": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:45.961905+00:00",
+   "search": []
+  },
+  "SVXY": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:46.157986+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 3236,
+     "internalSymbolFull": "SVXY",
+     "internalInstrumentDisplayName": "ProShares Short VIX Short-Term Futures ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "Chicago Board Options Exchange",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": true,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 3236,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 30808.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 63.78,
+    "ask": 63.79,
+    "date": "2026-10-29T16:54:36.2053929Z"
+   }
+  },
+  "TECL": {
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "search_at": "2026-10-29T19:23:46.346712+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 10855,
+     "internalSymbolFull": "TECL",
+     "internalInstrumentDisplayName": "Direxion Daily Technology Bull 3X ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "NYSE",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 10855,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 4135.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 200.57,
+    "ask": 200.83,
+    "date": "2026-10-29T19:23:47.3134574Z"
+   }
+  },
+  "TECS": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:46.589173+00:00",
+   "search": []
+  },
+  "TLT": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:46.737953+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 3020,
+     "internalSymbolFull": "TLT",
+     "internalInstrumentDisplayName": "iShares 20+ Year Treasury Bond ETF ",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "Nasdaq",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 3020,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 25661.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 81.46,
+    "ask": 81.47,
+    "date": "2026-10-29T19:23:47.4785443Z"
+   }
+  },
+  "TQQQ": {
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "search_at": "2026-10-29T19:23:46.920315+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 4465,
+     "internalSymbolFull": "TQQQ",
+     "internalInstrumentDisplayName": "ProShares UltraPro QQQ",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "Nasdaq",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": false,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 4465,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 24610.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "short",
+      "leverage": [
+       1,
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 68.64,
+    "ask": 68.65,
+    "date": "2026-10-29T19:23:47.8739529Z"
+   }
+  },
+  "UVIX": {
+   "used_by": [
+    "529"
+   ],
+   "search_at": "2026-10-29T19:23:47.102123+00:00",
+   "search": []
+  },
+  "UVXY": {
+   "used_by": [
+    "529",
+    "60-SQQQ"
+   ],
+   "search_at": "2026-10-29T19:23:47.566670+00:00",
+   "search": [
+    {
+     "internalInstrumentId": 3246,
+     "internalSymbolFull": "UVXY",
+     "internalInstrumentDisplayName": "ProShares Ultra VIX Short-Term Futures ETF",
+     "internalAssetClassName": "ETF",
+     "internalExchangeName": "Chicago Board Options Exchange",
+     "isDelisted": false,
+     "isCurrentlyTradable": true,
+     "isExchangeOpen": true,
+     "isHiddenFromClient": false
+    }
+   ],
+   "instrument_id": 3246,
+   "eligibility": {
+    "minPositionExposure": 10.0,
+    "allowOpenPosition": true,
+    "allowClosePosition": true,
+    "allowPartialClosePosition": true,
+    "requiresW8Ben": true,
+    "unitsQuantityType": "fractional",
+    "orderFillBehaviorType": "bestEffort",
+    "tradeUnitType": "units",
+    "maxUnitsPerOrder": 61388.0,
+    "leverage_configs": [
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       1
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     },
+     {
+      "settlement": "cfd",
+      "direction": "long",
+      "leverage": [
+       2,
+       5
+      ],
+      "min_amount": 10.0,
+      "potential": false
+     }
+    ]
+   },
+   "quote": {
+    "bid": 16.87,
+    "ask": 16.88,
+    "date": "2026-10-29T16:54:40.2779011Z"
+   }
+  }
+ },
+ "eligibility_at": "2026-10-29T19:23:47.890421+00:00",
+ "quotes_received_at": "2026-10-29T19:23:48.053414+00:00"
+}

@@ -1,0 +1,71 @@
+# eToro Universal Trading Engine -- engine configuration (schema: docs/STRATEGY_YAML_SCHEMA.md, "engine.yaml").
+# Safety is enforced in code: runtime.mode accepts only simulation|shadow, security.live_execution_enabled must be
+# false, and no live writer exists in this release. Editing this file cannot enable live trading.
+schema_version: 1
+engine:
+  instance_id: ute-rc1
+  description: "Release candidate 0.9.0rc1 -- shadow by default, live NOT implemented"
+broker:
+  name: etoro
+  access: live_read_only            # the eToro adapter has no write methods
+  api_base: https://public-api.etoro.com
+  credentials_env:                  # NAMES of environment variables (owner-provisioned READ-ONLY key); never values
+    api_key: UTE_ETORO_READONLY_API_KEY
+    user_key: UTE_ETORO_READONLY_USER_KEY
+  request_timeout_seconds: 10
+account:
+  ownership: exclusive              # all broker cash belongs to this engine; foreign positions are excluded
+  equity_source: broker
+  base_currency: USD
+  deposit_detection: automatic
+  unknown_balance_policy: halt
+  cash_tolerance_usd: 0.05
+  pre_existing_positions: exclude_and_report
+  external_trade_policy: halt
+runtime:
+  mode: shadow                      # simulation | shadow   (live is refused)
+  initial_strategy: QC_60_SQQQ      # used ONLY at the first start of an empty database
+  strategies_dir: strategies
+  cycle_interval_seconds: 60
+security:
+  live_execution_enabled: false
+  approvals_required: true
+reconciliation:
+  before_decision: true
+  before_execution: true
+  after_execution: true
+  after_restart: true
+  order_poll_seconds: 2
+  order_poll_attempts: 15
+risk:
+  max_gross_exposure: 1.0
+  max_instrument_weight: 1.0
+  max_leverage: 1
+  allow_short: false
+  daily_loss_halt_pct: 0.20         # NEW_EXPOSURE halt (never a liquidation); 3x ETFs move 10%+ in a day
+  drawdown_halt_pct: 0.50
+  max_single_order_usd: 25000       # catastrophic-bug backstop, not a sizing rule
+  min_order_usd: 10                 # eToro minimum position
+  max_quote_age_seconds: 120
+  halt_allows_reductions: false
+market_data:
+  provider: yahoo                   # free Yahoo chart endpoint for shadow decisions
+  lookback_sessions: 760
+  simulation_half_spread_bp: 2.0
+monitoring:
+  heartbeat_stale_seconds: 300
+notifications:
+  webhook_url_env: UTE_ALERT_WEBHOOK_URL   # NAME of the env var holding the webhook URL (unset = outbox file only)
+  min_severity: WARNING
+  dedupe_minutes: 60
+  timeout_seconds: 10
+  max_attempts: 10
+backup:
+  local_dir: backups                # relative to UTE_HOME
+  retain: 14
+  offsite_method: none              # none | copy (remote mounted at /mnt/etoro-ute-offsite) | rsync (user@host:path); owner approval
+  offsite_target_env: UTE_BACKUP_OFFSITE_TARGET
+calendar:
+  exchange: XNYS
+  timezone: America/New_York
+  unscheduled_closures: ["2025-01-09"]

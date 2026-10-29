@@ -1,0 +1,52 @@
+# eToro Universal Trading Engine -- PRODUCTION unit (system-level). Shadow/simulation only: the live writer is
+# release-gated in code (LIVE_RELEASE_ENABLED=False) and mode=live is refused by the schema. Runs as its own system
+# user. Filesystem view (deployment/layout.sh): /home is an EMPTY tmpfs with only /home/ute bound back in, read-only,
+# and /home/ute/data + /home/ute/logs writable. Gold Miner (/home/engine) does not exist inside this namespace; the
+# rest of the OS is read-only (ProtectSystem=strict). Never ordered against gold-miner-engine.service.
+[Unit]
+Description=eToro Universal Trading Engine (shadow; live order submission disabled)
+After=network-online.target
+Wants=network-online.target
+OnFailure=etoro-ute-notify-crash.service
+
+[Service]
+Type=simple
+User=ute
+Group=ute
+WorkingDirectory=/home/ute/current
+Environment=UTE_HOME=/home/ute/data
+Environment=UTE_LOG_DIR=/home/ute/logs
+Environment=UTE_BACKUP_DIR=/home/ute/backups/nightly
+Environment=UTE_CONFIG=/etc/etoro-ute/engine.yaml
+# owner-provisioned READ-ONLY eToro key (file mode 0640 root:ute); absent -> the engine fails closed
+EnvironmentFile=-/etc/etoro-ute/readonly-credentials.env
+# optional: UTE_ALERT_WEBHOOK_URL=..., UTE_BACKUP_OFFSITE_TARGET=... (0640 root:ute)
+EnvironmentFile=-/etc/etoro-ute/ops.env
+ExecStartPre=/home/ute/venv/bin/trading-engine config validate
+ExecStart=/home/ute/venv/bin/trading-engine run --service
+Restart=always
+RestartSec=20
+TimeoutStopSec=30
+KillSignal=SIGTERM
+# filesystem isolation
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/ute
+BindPaths=/home/ute/data /home/ute/logs
+InaccessiblePaths=-/home/engine
+ReadOnlyPaths=/etc/etoro-ute
+PrivateTmp=yes
+UMask=0027
+# privilege hardening
+NoNewPrivileges=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

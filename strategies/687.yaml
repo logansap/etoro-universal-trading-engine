@@ -1,0 +1,57 @@
+# Gold Miner #687 -- REFERENCE ONLY. Not deployable: no adapter exists (registry status UNAVAILABLE),
+# enabled and live_eligible must stay false (enforced by the goldminer687 module), and the LIVE #687 engine on the
+# VPS is never touched by this project. Schedule fields are required by the schema; #687 itself decides at the
+# 09:30 New York open in its own engine. See docs/STRATEGY_SWITCHING.md "Migrating #687".
+schema_version: 1
+id: GM_687
+name: "Gold Miner #687 (reference; live in its own engine)"
+implementation: goldminer687
+version: 0.0.0
+fingerprint: sha256:6834078da1a66833ffd0ab261db26d46b7f66724fbb48edcb54dc7ca2ee0cb5d
+enabled: false
+live_eligible: false
+live_eligibility_note: >-
+  Reference only. The live engine (tree version 63e407d4c2b1) trades GDXU/GDXD synthetically as a GDX CFD at x5
+  with a broker stop -- leverage this engine's risk model does not permit (x1 long only).
+source:
+  reference: D:/AI-Gold-Miner-Trading-Engine (read-only; commit 7a82e3f on the VPS, 2026-10-27)
+  sha256: null
+  note: no source file is vendored for #687; the live engine's own git history is its record
+universe:
+  signal: [GDX]
+  tradable: [GDX]
+substitutions: {}
+instruments:
+  GDX: {etoro_instrument_id: 3002, eligibility: VERIFIED_TRADABLE, settlement: CFD,
+        evidence: "GM live positions (audit 2026-10-27)"}
+eligibility:
+  required_status: VERIFIED_TRADABLE
+  allowed_settlement: [CFD]
+  max_leverage: 1
+  allow_short: false
+schedule:
+  calendar: XNYS
+  timezone: America/New_York
+  decision_time: "16:00"
+  decision_deadline: "09:15"
+  execution: next_regular_session_open
+  execution_delay_minutes: 0
+  execution_window_minutes: 60
+  missed_policy: skip
+allocation:
+  capital_fraction: 1.0
+  cash_buffer_pct: 0.0
+rebalancing:
+  min_order_usd: 10
+  min_order_pct_nav: 0.0
+  liquidate_non_targets: true
+risk:
+  max_gross_exposure: 1.0
+  max_instrument_weight: 1.0
+execution:
+  mode: shadow
+  order_type: market
+  sequencing: sell_then_buy
+logging:
+  level: INFO
+  alerts: [halt]
