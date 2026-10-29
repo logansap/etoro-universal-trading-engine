@@ -19,9 +19,9 @@ if [ "$SRC" = --worktree ]; then
   BUNDLE=$WORK/repo.bundle
 else
   BUNDLE=$(readlink -f "$SRC")
-  git clone -q "$BUNDLE" "$WORK/src"
+  git clone -q -b main "$BUNDLE" "$WORK/src" || { echo "the bundle has no refs/heads/main"; exit 2; }
 fi
-git -C "$WORK/src" rev-parse main > "$OUT/rehearsed_commit.txt"
+git -C "$WORK/src" rev-parse HEAD > "$OUT/rehearsed_commit.txt"
 sha256sum "$BUNDLE" > "$OUT/bundle.sha256"
 NAME=ute-sync-rehearsal
 docker rm -f $NAME >/dev/null 2>&1 || true
