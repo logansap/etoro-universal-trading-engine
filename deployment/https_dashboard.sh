@@ -40,6 +40,12 @@ backup() {   # -> path of a new root-only tarball of /etc/nginx
   local bk; bk=$UTE_DEPLOY/nginx-backup-$(date -u +%Y%m%dT%H%M%S%NZ).tar.gz
   tar -czf "$bk" -C / etc/nginx && chmod 600 "$bk" && echo "$bk"
 }
+others_serving() {   # $1 host -> nginx configuration files OTHER than this site that also claim the name (they win
+  # or split requests: observed 2026-10-30, the earlier hand-installed site kept answering for the name)
+  nginx -T 2>/dev/null | awk -v h="$1" '/^# configuration file /{f=$4; sub(/:$/,"",f)} /^[ \t]*server_name/ {
+      for (i = 2; i <= NF; i++) { n = $i; sub(/;$/, "", n); if (n == h) print f } }' \
+    | sort -u | grep -vx -e "$AVAIL" -e "$ENABLED" || true
+}
 settle() {   # nginx reload and a dashboard restart are asynchronous: wait (max 20 s) until the site answers as configured
   local h=$1 i R="-s -o /dev/null -m 3 -w %{http_code} --resolve $1:80:127.0.0.1 --resolve $1:443:127.0.0.1"
   for i in $(seq 40); do
@@ -72,18 +78,20 @@ apply() {
   install -m 644 -o root -g root "$tmp/inc" "$INC"
   install -m 644 -o root -g root "$tmp/site" "$AVAIL"
   ln -sfn "$AVAIL" "$ENABLED"
-  if nginx -t 2>"$tmp/nginx-t"; then
+  local others=""
+  if nginx -t 2>"$tmp/nginx-t" && others=$(others_serving "$h") && [ -z "$others" ]; then
     systemctl reload nginx || die "nginx reload failed (configuration valid; see journalctl -u nginx)"
     echo "https dashboard: applied from release $(basename "$(readlink -f "$rel")") for $h (backup $bk)"
     settle "$h"
     return 0
   fi
   cat "$tmp/nginx-t" >&2
+  [ -z "$others" ] || echo "REFUSED: another enabled nginx site also serves $h: $others -- disable it (bootstrap --replace-site <its sites-enabled entry>)" >&2
   if [ -f "$tmp/old-site" ]; then install -m 644 "$tmp/old-site" "$AVAIL"; else rm -f "$AVAIL"; fi
   if [ -f "$tmp/old-inc" ]; then install -m 644 "$tmp/old-inc" "$INC"; else rm -f "$INC"; fi
   [ $had_link -eq 1 ] || rm -f "$ENABLED"
   nginx -t >/dev/null 2>&1 && systemctl reload nginx
-  echo "FAILED: nginx -t rejected the new site: previous files restored (nginx keeps serving them; backup $bk)" >&2
+  echo "FAILED: the new site was not activated: previous files restored (nginx keeps serving them; backup $bk)" >&2
   return 3
 }
 
@@ -100,6 +108,12 @@ check() {
   [ "$(curl $R -k "https://$h/")" = 303 ] && ok "the page redirects to the login without a session (303)" || ko "page served without a session"
   [ "$(curl $R -k "https://$h/login")" = 200 ] && ok "login page reachable over https" || ko "login page not reachable"
   [ "$(curl $R -k "https://$h/api/overview")" = 401 ] && ok "no data without a session (401)" || ko "data reachable without a session"
+  local direct via others; direct=$(curl -s -m 5 "http://127.0.0.1:${UTE_DASH_PORT:-8790}/healthz")
+  via=$(curl -s -m 10 -k --resolve "$h:443:127.0.0.1" "https://$h/healthz")
+  [ -n "$direct" ] && [ "$via" = "$direct" ] && ok "https://$h/ is answered by THIS engine's dashboard (instance matches)" \
+    || ko "https://$h/ is NOT answered by this engine's dashboard"
+  others=$(others_serving "$h")
+  [ -z "$others" ] && ok "no other nginx site claims $h" || ko "other nginx site(s) also claim $h: $others"
   local end; end=$(openssl x509 -enddate -noout -in "/etc/letsencrypt/live/$h/fullchain.pem" 2>/dev/null | cut -d= -f2)
   if [ -n "$end" ] && [ $(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 )) -ge 14 ]; then ok "certificate valid until $end"
   else echo "WARN  https dashboard: certificate expires soon or unreadable ($end)"; fi
@@ -121,13 +135,21 @@ case "$cmd" in
     printf 'UTE_DASHBOARD_HOST=%s\nUTE_DASHBOARD_REPLACED=%s\n' "$HOSTNAME_ARG" "$REPLACE" > "$HOST_ENV"
     chmod 640 "$HOST_ENV"; chown root:"$UTE_USER" "$HOST_ENV"
     if [ -n "$REPLACE" ]; then
-      [ -L "/etc/nginx/sites-enabled/$REPLACE" ] || die "--replace-site: /etc/nginx/sites-enabled/$REPLACE is not a link"
-      rm -f "/etc/nginx/sites-enabled/$REPLACE"
-      echo "disabled the previous site link $REPLACE (its file in sites-available is kept)"
+      if [ -L "/etc/nginx/sites-enabled/$REPLACE" ]; then
+        rm -f "/etc/nginx/sites-enabled/$REPLACE"
+        echo "disabled the previous site link $REPLACE (its file in sites-available is kept)"
+      elif [ -f "/etc/nginx/sites-enabled/$REPLACE" ]; then
+        mv "/etc/nginx/sites-enabled/$REPLACE" "$UTE_DEPLOY/nginx-replaced-$REPLACE-$(date -u +%Y%m%dT%H%M%SZ)"
+        echo "moved the previous site file $REPLACE out of sites-enabled into $UTE_DEPLOY (kept; restore puts it back)"
+      else
+        die "--replace-site: /etc/nginx/sites-enabled/$REPLACE does not exist"
+      fi
     fi
     if ! apply; then
-      [ -z "$REPLACE" ] || ln -sfn "/etc/nginx/sites-available/$REPLACE" "/etc/nginx/sites-enabled/$REPLACE"
-      nginx -t >/dev/null 2>&1 && systemctl reload nginx; exit 2
+      rm -rf /etc/nginx && mkdir "$TMPD/pre" && tar -xzf "$NGINX_BACKUP_TAKEN" -C "$TMPD/pre" && cp -a "$TMPD/pre/etc/nginx" /etc/nginx
+      nginx -t >/dev/null 2>&1 && systemctl reload nginx
+      echo "bootstrap FAILED: /etc/nginx restored exactly as before (from $NGINX_BACKUP_TAKEN)" >&2
+      disable_host_env; exit 2
     fi
     systemctl restart etoro-ute-dashboard.service 2>/dev/null || true     # the unit in git: --secure-cookie --trust-proxy
     settle "$HOSTNAME_ARG"

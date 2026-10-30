@@ -253,6 +253,14 @@ if [ $RC -eq 0 ]; then
   fi
 fi
 
+if [ $RC -eq 0 ] && [ -f /usr/local/sbin/ute-audit-wrapper ]; then
+  say "8c. read-only audit account (GitOps: the wrapper of THIS release; installed once by deployment/audit/setup_audit.sh)"
+  for f in ute-audit-wrapper ute-audit-ssh; do
+    if cmp -s "$UTE_CURRENT/deployment/audit/$f.sh" "/usr/local/sbin/$f"; then say "   $f: unchanged"
+    else install -o root -g root -m 0755 "$UTE_CURRENT/deployment/audit/$f.sh" "/usr/local/sbin/$f" && say "   $f: updated from the release"; fi
+  done
+fi
+
 say "9. Gold Miner fingerprint (after)"
 gm_fingerprint > "$UTE_DEPLOY/gm_after.$TS"
 if ! diff "$UTE_DEPLOY/gm_before.$TS" "$UTE_DEPLOY/gm_after.$TS"; then

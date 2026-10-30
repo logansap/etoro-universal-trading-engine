@@ -195,6 +195,43 @@ ssh -N -L 18790:127.0.0.1:8790 root@<vps>
 ```
 Then open `http://localhost:18790`. Use `localhost`, because browsers accept Secure cookies there.
 
+## Read-only audit account (`ute-audit`)
+
+The account lets an auditor (a Claude session) read evidence without any operator access. It is the
+Universal Engine's own account; it is not Gold Miner's `claude-audit` and does not depend on it.
+
+**What it can run:** its SSH key can run exactly one forced command. That command takes one name from a fixed list
+and passes it to a root-owned wrapper, the only binary the account may run through sudo:
+
+| `ssh ute-audit <name>` | What it returns |
+|---|---|
+| `snapshot` | The dashboard's data as JSON: broker equity, sleeves, P&L, trades, operations and migration. It reads the engine database read-only and makes no broker call. |
+| `verify` | `verify_vps.sh` without `--probe`, so no broker call. |
+| `health` | Service and timer states, restarts and the release in use. |
+| `journal` | The last 600 engine and 100 dashboard journal lines. |
+| `release` | The current and previous release, the checkout commit and status, and the deployment history. |
+| `https-check` | `https_dashboard.sh check`. |
+
+**What it cannot do:** it cannot place, change or cancel an order, write state, configuration or the repository,
+control a service, read a credential file, the engine database or the dashboard password, or open a shell.
+
+**How it is held to that:**
+- the password is locked;
+- the account is not in group `ute`;
+- `authorized_keys` is root-owned and uses `restrict`: no pty and no forwarding.
+
+**One-time setup** (root on the VPS; `setup_audit.sh` runs every negative check itself):
+```bash
+bash /home/ute/current/deployment/audit/setup_audit.sh --pubkey /root/ute-audit.pub
+```
+- If sshd restricts logins with `AllowUsers` or `AllowGroups`, the script says so and does not edit sshd.
+- After setup, `sync_vps.sh` refreshes the wrapper from each verified release in step 8c.
+
+**Remove:**
+```bash
+userdel -r ute-audit && rm -f /etc/sudoers.d/ute-audit /usr/local/sbin/ute-audit-wrapper /usr/local/sbin/ute-audit-ssh
+```
+
 ## Backups
 
 - **Nightly:** `etoro-ute-backup.timer`, 23:15, uses the SQLite online backup API, then runs a restore verification.

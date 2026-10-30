@@ -71,7 +71,8 @@ def test_sync_never_pulls_resets_or_pushes():
 
 @pytest.mark.skipif(not shutil.which("bash") or not shutil.which("sh"), reason="needs bash")
 @pytest.mark.parametrize("script", ["layout.sh", "install.sh", "sync_vps.sh", "verify_vps.sh", "rollback.sh",
-                                    "uninstall.sh", "vps_preflight.sh", "https_dashboard.sh"])
+                                    "uninstall.sh", "vps_preflight.sh", "https_dashboard.sh",
+                                    "audit/ute-audit-wrapper.sh", "audit/ute-audit-ssh.sh", "audit/setup_audit.sh"])
 def test_deployment_scripts_parse(script):
     r = subprocess.run(["bash", "-n", str(DEP / script)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
@@ -116,3 +117,50 @@ def test_sync_applies_the_dashboard_site_only_after_a_verified_deployment_and_ac
     assert "nginx -t" in h and "systemctl reload nginx" in h and "restart etoro-ute.service" not in h
     i_bk, i_env = h.index("NGINX_BACKUP_TAKEN=$(backup)"), h.index("> \"$HOST_ENV\"")
     assert i_bk < i_env and "  restore)" in h                           # backup before bootstrap changes anything
+
+
+# ------------------------------------------------------------------ read-only audit account (ute-audit)
+AUD = DEP / "audit"
+
+
+def _subcommands(text, start):
+    """The names of the case branch that starts at `start` (e.g. 'snapshot|verify|...)')."""
+    i = text.index(start)
+    return set(text[i:text.index(")", i)].strip().split("|"))
+
+
+def test_audit_forced_command_and_wrapper_allow_the_same_fixed_read_only_list():
+    """INVARIANT: the SSH forced command accepts only whole subcommand names from a fixed list and passes them to the
+    root-owned wrapper, which matches them again; no caller text reaches a command (no eval, no other argument); no
+    subcommand can call the broker (no --probe), trade, control a service, change state or print a credential."""
+    w = (AUD / "ute-audit-wrapper.sh").read_text(encoding="utf-8")
+    shim = (AUD / "ute-audit-ssh.sh").read_text(encoding="utf-8")
+    allowed = {"snapshot", "verify", "health", "journal", "release", "https-check"}
+    assert _subcommands(shim, "  snapshot|") == allowed | {"help"}
+    branches = set(re.findall(r"^  ([a-z-]+)\)$", w, re.M))
+    assert branches == allowed
+    assert 'exec /usr/bin/sudo -n /usr/local/sbin/ute-audit-wrapper "$SUB"' in shim
+    code = w.split("set -euo pipefail")[1]                               # the header comment explains; code is checked
+    assert "eval" not in code and "SSH_ORIGINAL_COMMAND" not in code and "$2" not in code
+    assert "$@" not in code.replace('"${TE[@]}"', "") and "--probe" not in code and "credentials" not in code
+    for forbidden in ("systemctl restart", "systemctl stop", "systemctl start", "kill-switch", "restructure",
+                      "reallocate", "set-password", "login-link", " live", "rm ", "mv ", "> /"):
+        assert forbidden not in code, forbidden
+    assert 'dashboard snapshot' in w and "env -i" in w                  # the engine CLI runs without any environment
+
+
+def test_audit_setup_validates_sudoers_before_installing_and_pins_the_key():
+    s = (AUD / "setup_audit.sh").read_text(encoding="utf-8")
+    assert s.index("visudo -cf") < s.index('install -o root -g root -m 0440 "$T" "$SUDOERS"')
+    assert "NOPASSWD: %s" in s and "ALL=(root)" in s
+    assert "printf 'restrict,command=\"%s\" %s\\n' \"$SHIM\" \"$KEY\"" in s     # forced command, no pty/forwarding
+    assert 'chown root:"$AUDIT_USER" "$AH/.ssh/authorized_keys"' in s     # the account cannot loosen its own key
+    assert "passwd -l" in s and "grep -qx ute" in s                      # locked; never in group ute
+    assert "sshd_config" in s and "AllowUsers" in s and "sed -i" not in s  # sshd is never edited
+
+
+def test_sync_refreshes_the_audit_wrapper_only_when_installed_and_only_after_a_verified_deployment():
+    s = (DEP / "sync_vps.sh").read_text(encoding="utf-8")
+    i = s.index("8c. read-only audit account")
+    assert "[ $RC -eq 0 ] && [ -f /usr/local/sbin/ute-audit-wrapper ]" in s[i - 200:i]
+    assert s.index('verify_vps.sh" --expect-commit') < i

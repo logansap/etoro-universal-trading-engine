@@ -309,3 +309,21 @@ def test_lockout_is_per_real_client_behind_the_local_proxy(tmp_path, trust_proxy
             assert post(PW, "not-an-address") == 303                 # malformed: socket address (not locked)
     finally:
         h.shutdown()
+
+
+def test_snapshot_is_every_dashboard_route_and_writes_nothing(tmp_path, capsys):
+    """INVARIANT (read-only audit account): `dashboard snapshot` returns every data route of the dashboard as JSON from
+    the read-only data layer; the engine database is unchanged; no credential or password hash appears in it."""
+    env, e, d = setup(tmp_path)
+    db = sorted(p for p in env.home.rglob("*") if p.is_file() and not p.name.endswith("-shm"))
+    before = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in db}
+    S.set_password(env.home, PW)
+    auth = S.auth_path(env.home).read_text()
+    from utengine.cli import main as cli
+    assert cli(["--config", str(env.cfg_path), "--home", str(env.home), "dashboard", "snapshot"]) == 0
+    out = capsys.readouterr().out
+    snap = json.loads(out)
+    assert set(snap) == set(S.DATA_ROUTES)
+    assert snap["overview"]["account"]["account_equity"] == pytest.approx(d.overview()["account"]["account_equity"])
+    assert {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in db} == before
+    assert json.loads(auth)["hash"] not in out and "API_KEY" not in out and "USER_KEY" not in out

@@ -329,6 +329,18 @@ class ExclusiveHTTPServer(http.server.ThreadingHTTPServer):
         super().server_bind()
 
 
+def snapshot(data) -> dict:
+    """Every dashboard data route at once (the read-only audit account's view: `dashboard snapshot`). The same
+    read-only data layer as the web pages; a route that cannot be read is reported, never estimated."""
+    out = {}
+    for name in DATA_ROUTES:
+        try:
+            out[name] = getattr(data, name)()
+        except Exception as exc:  # noqa: BLE001 -- reported exactly as the web route reports it
+            out[name] = {"error": f"{type(exc).__name__}: {exc}", "data_label": "UNAVAILABLE"}
+    return out
+
+
 def serve(data, home, host="127.0.0.1", port=8790, allow_remote=False, secure_cookie=False, env=None, ready=None,
           trust_proxy=False):
     env = os.environ if env is None else env

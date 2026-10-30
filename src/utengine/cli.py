@@ -209,6 +209,9 @@ def cmd_dashboard(a):
         return 0
     from .dashboard.data import Data
     cfg, specs = _dash_ctx(a)
+    if a.action == "snapshot":                  # the read-only audit account's view; never calls the broker
+        print(json.dumps(server.snapshot(Data(cfg, specs, a.home)), indent=1, sort_keys=True, default=str))
+        return 0
     print(f"read-only dashboard on http://{a.host}:{a.port}/ (mode {cfg['runtime']['mode']}; Ctrl+C stops)")
     clock = None
     if a.now:                                   # rehearsal / demo clock, as for the engine commands
@@ -578,6 +581,7 @@ def build_parser():
     spw.add_argument("--password-file", default=None, help="read the password from this file (else prompt)")
     ll = dss.add_parser("login-link")
     ll.add_argument("--port", type=int, default=8790)
+    dss.add_parser("snapshot", help="every dashboard data route as JSON (engine database read-only; no broker call)")
     dsh.set_defaults(fn=cmd_dashboard)
     rt = sub.add_parser("retirement", help="Gold Miner retirement evidence ledger (the tool runs on the GM host)")
     rts = rt.add_subparsers(dest="action", required=True)

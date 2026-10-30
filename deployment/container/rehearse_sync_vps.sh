@@ -193,8 +193,31 @@ P
   bash "$UTE_CURRENT/deployment/https_dashboard.sh" restore > /rehearsal/https_restore.out 2>&1; RC=$?
   check "one-command restore: /etc/nginx as before bootstrap (the previous site serves the name again), host.env set aside" "[ $RC = 0 ] && curl -s --resolve $DH:80:127.0.0.1 http://$DH/ | grep -q MOCK && [ ! -e /etc/nginx/sites-enabled/ute-dashboard.conf ] && [ ! -f /etc/etoro-ute/host.env ] && ls /etc/etoro-ute/host.env.disabled-* >/dev/null"
   check "the engine kept running through the restore" "[ \$(systemctl show -p MainPID --value etoro-ute) = $EPID ]"
+  # a second enabled site claiming the same name (the 2026-10-30 VPS case: a hand-installed site kept answering)
+  printf 'server {\n  listen 443 ssl;\n  server_name %s;\n  ssl_certificate /etc/letsencrypt/live/%s/fullchain.pem;\n  ssl_certificate_key /etc/letsencrypt/live/%s/privkey.pem;\n  return 401;\n}\n' "$DH" "$DH" "$DH" > /etc/nginx/sites-available/aaa-shadow.conf
+  ln -sf /etc/nginx/sites-available/aaa-shadow.conf /etc/nginx/sites-enabled/aaa-shadow.conf
+  bash "$UTE_CURRENT/deployment/https_dashboard.sh" bootstrap --host $DH --replace-site mock-gm-site.conf > /rehearsal/https_bootstrap_shadow.out 2>&1; RC=$?
+  check "a second site claiming the name: bootstrap refused (exit 2), names the file, /etc/nginx restored as before, host.env set aside" "[ $RC = 2 ] && grep -q 'another enabled nginx site also serves' /rehearsal/https_bootstrap_shadow.out && grep -q 'aaa-shadow.conf' /rehearsal/https_bootstrap_shadow.out && [ -L /etc/nginx/sites-enabled/mock-gm-site.conf ] && [ ! -e /etc/nginx/sites-enabled/ute-dashboard.conf ] && [ ! -f /etc/etoro-ute/host.env ]"
+  rm -f /etc/nginx/sites-enabled/aaa-shadow.conf /etc/nginx/sites-available/aaa-shadow.conf; nginx -t >/dev/null 2>&1 && systemctl reload nginx; sleep 2
   bash "$UTE_CURRENT/deployment/https_dashboard.sh" bootstrap --host $DH --replace-site mock-gm-site.conf > /rehearsal/https_bootstrap2.out 2>&1; RC=$?
-  check "bootstrap again after the restore: exit 0, the https checks pass" "[ $RC = 0 ] && grep -q 'PASS  https dashboard: no data without a session' /rehearsal/https_bootstrap2.out && ! grep -q FAIL /rehearsal/https_bootstrap2.out"
+  check "bootstrap again: exit 0, the https checks pass, and THIS engine answers over https" "[ $RC = 0 ] && grep -q 'PASS  https dashboard: no data without a session' /rehearsal/https_bootstrap2.out && grep -q 'answered by THIS engine' /rehearsal/https_bootstrap2.out && ! grep -q FAIL /rehearsal/https_bootstrap2.out"
+
+  say "## E3. read-only audit account (ute-audit): one-time setup, then only a forced command over SSH"
+  rm -f /root/auditkey /root/auditkey.pub; ssh-keygen -q -t ed25519 -N '' -C ute-claude-audit -f /root/auditkey
+  bash "$UTE_CURRENT/deployment/audit/setup_audit.sh" --pubkey /root/auditkey.pub > /rehearsal/audit_setup.out 2>&1; RC=$?
+  check "setup_audit.sh: exit 0, every negative check refused, the allowed one works" "[ $RC = 0 ] && grep -q 'ute-audit ready' /rehearsal/audit_setup.out && ! grep -q '  FAIL' /rehearsal/audit_setup.out"
+  check "the account: password locked, not in group ute, authorized_keys root-owned with restrict + forced command" "passwd -S ute-audit | awk '{exit (\$2==\"L\")?0:1}' && ! id -nG ute-audit | grep -qw ute && [ \"\$(stat -c %U /home/ute-audit/.ssh/authorized_keys)\" = root ] && grep -q '^restrict,command=\"/usr/local/sbin/ute-audit-ssh\" ssh-ed25519 ' /home/ute-audit/.ssh/authorized_keys"
+  ssh-keygen -A >/dev/null 2>&1; mkdir -p /run/sshd; systemctl start ssh >/dev/null 2>&1 || systemctl start ssh.socket >/dev/null 2>&1; sleep 2
+  AS="ssh -i /root/auditkey -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR ute-audit@127.0.0.1"
+  $AS snapshot > /rehearsal/audit_snapshot.json 2>/rehearsal/audit_snapshot.err; RC=$?
+  check "ssh ute-audit snapshot: exit 0, JSON with every dashboard route, the engine's own equity" "[ $RC = 0 ] && python3 -c 'import json,sys; d=json.load(open(\"/rehearsal/audit_snapshot.json\")); sys.exit(0 if {\"meta\",\"overview\",\"strategies\",\"trades\",\"operations\",\"migration\"} <= set(d) else 1)'"
+  $AS verify > /rehearsal/audit_verify.out 2>&1; RC=$?
+  check "ssh ute-audit verify: verify_vps.sh runs (no broker probe) and passes" "[ $RC = 0 ] && grep -q 'ALL CHECKS PASSED' /rehearsal/audit_verify.out && ! grep -q 'live READ-ONLY broker probe' /rehearsal/audit_verify.out"
+  check "ssh ute-audit release / health / journal / https-check answer" "$AS release | grep -q 'current:' && $AS health | grep -q 'Id=etoro-ute.service' && $AS journal >/dev/null && $AS https-check | grep -q 'PASS  https dashboard'"
+  $AS 'sh -c id' >/dev/null 2>&1; R1=$?; $AS 'snapshot; id' >/dev/null 2>&1; R2=$?; $AS bash >/dev/null 2>&1; R3=$?; $AS not-a-subcommand >/dev/null 2>&1; R4=$?
+  check "refused (exit 2): a shell command, a chained command, bash, an unknown subcommand" "[ $R1 = 2 ] && [ $R2 = 2 ] && [ $R3 = 2 ] && [ $R4 = 2 ]"
+  check "refused: remote port forwarding (restrict)" "! ssh -i /root/auditkey -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ExitOnForwardFailure=yes -R 18002:127.0.0.1:22 ute-audit@127.0.0.1 help >/dev/null 2>&1"
+  check "the audit output carries no credential value and no password hash" "! grep -qE 'mock-gm-api-key|mock-gm-user-key|\"hash\": \"[0-9a-f]{64}\"' /rehearsal/audit_snapshot.json /rehearsal/audit_verify.out"
 
   say "## F. guards: dirty checkout, concurrent deployment, unpublished commit"
   touch "$UTE_CHECKOUT/LOCAL_EDIT"
@@ -215,6 +238,7 @@ P
   check "state carried over (audit chain verified, history kept)" "ute_te verify | grep -q '\"audit_chain_ok\": true' && [ \$(ute_te verify | python3 -c \"import json,sys; print(json.load(sys.stdin).get('audit_entries', 0))\" 2>/dev/null || echo 0) -ge $N_AUDIT ]"
 
   check "GitOps: the update reports the dashboard site (unchanged template) in step 8b" "grep -q '8b. HTTPS dashboard site' /rehearsal/sync_update.out && grep -q 'https dashboard: unchanged' /rehearsal/sync_update.out"
+  check "GitOps: the update refreshes the audit wrapper from the release in step 8c" "grep -q '8c. read-only audit account' /rehearsal/sync_update.out && grep -q 'ute-audit-wrapper: unchanged' /rehearsal/sync_update.out && cmp -s $UTE_CURRENT/deployment/audit/ute-audit-wrapper.sh /usr/local/sbin/ute-audit-wrapper"
   echo "# hand edit" >> /etc/nginx/sites-available/ute-dashboard.conf
   bash "$UTE_CURRENT/deployment/https_dashboard.sh" check > /rehearsal/https_drift.out 2>&1; RC=$?   # no pipe: SIGPIPE under pipefail
   check "drift is reported by check (WARN, not a failure)" "[ $RC = 0 ] && grep -q 'WARN  https dashboard: nginx site differs' /rehearsal/https_drift.out"
