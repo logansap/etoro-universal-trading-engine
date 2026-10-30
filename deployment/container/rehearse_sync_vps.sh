@@ -206,14 +206,21 @@ P
   rm -f /root/auditkey /root/auditkey.pub; ssh-keygen -q -t ed25519 -N '' -C ute-claude-audit -f /root/auditkey
   bash "$UTE_CURRENT/deployment/audit/setup_audit.sh" --pubkey /root/auditkey.pub > /rehearsal/audit_setup.out 2>&1; RC=$?
   check "setup_audit.sh: exit 0, every negative check refused, the allowed one works" "[ $RC = 0 ] && grep -q 'ute-audit ready' /rehearsal/audit_setup.out && ! grep -q '  FAIL' /rehearsal/audit_setup.out"
-  check "the account: password locked, not in group ute, authorized_keys root-owned with restrict + forced command" "passwd -S ute-audit | awk '{exit (\$2==\"L\")?0:1}' && ! id -nG ute-audit | grep -qw ute && [ \"\$(stat -c %U /home/ute-audit/.ssh/authorized_keys)\" = root ] && grep -q '^restrict,command=\"/usr/local/sbin/ute-audit-ssh\" ssh-ed25519 ' /home/ute-audit/.ssh/authorized_keys"
+  check "the account: password locked, not in group ute, authorized_keys root-owned with restrict + forced command" "passwd -S ute-audit | awk '{exit (\$2==\"L\")?0:1}' && ! id -nG ute-audit | tr ' ' '\n' | grep -qx ute && [ \"\$(stat -c %U /home/ute-audit/.ssh/authorized_keys)\" = root ] && grep -q '^restrict,command=\"/usr/local/sbin/ute-audit-ssh\" ssh-ed25519 ' /home/ute-audit/.ssh/authorized_keys"
+  # container artifact: systemd-user-sessions never runs here, so /run/nologin (pam_nologin) would refuse every
+  # non-root login; a VPS removes it at boot
+  rm -f /run/nologin
   ssh-keygen -A >/dev/null 2>&1; mkdir -p /run/sshd; systemctl start ssh >/dev/null 2>&1 || systemctl start ssh.socket >/dev/null 2>&1; sleep 2
   AS="ssh -i /root/auditkey -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR ute-audit@127.0.0.1"
   $AS snapshot > /rehearsal/audit_snapshot.json 2>/rehearsal/audit_snapshot.err; RC=$?
   check "ssh ute-audit snapshot: exit 0, JSON with every dashboard route, the engine's own equity" "[ $RC = 0 ] && python3 -c 'import json,sys; d=json.load(open(\"/rehearsal/audit_snapshot.json\")); sys.exit(0 if {\"meta\",\"overview\",\"strategies\",\"trades\",\"operations\",\"migration\"} <= set(d) else 1)'"
   $AS verify > /rehearsal/audit_verify.out 2>&1; RC=$?
   check "ssh ute-audit verify: verify_vps.sh runs (no broker probe) and passes" "[ $RC = 0 ] && grep -q 'ALL CHECKS PASSED' /rehearsal/audit_verify.out && ! grep -q 'live READ-ONLY broker probe' /rehearsal/audit_verify.out"
-  check "ssh ute-audit release / health / journal / https-check answer" "$AS release | grep -q 'current:' && $AS health | grep -q 'Id=etoro-ute.service' && $AS journal >/dev/null && $AS https-check | grep -q 'PASS  https dashboard'"
+  for c in release health journal https-check; do $AS $c > /rehearsal/audit_$c.out 2>&1; echo $? > /rehearsal/audit_$c.rc; done
+  check "ssh ute-audit release: exit 0, current release and history" "[ \$(cat /rehearsal/audit_release.rc) = 0 ] && grep -q 'current:' /rehearsal/audit_release.out"
+  check "ssh ute-audit health: exit 0, service states" "[ \$(cat /rehearsal/audit_health.rc) = 0 ] && grep -q 'Id=etoro-ute.service' /rehearsal/audit_health.out"
+  check "ssh ute-audit journal: exit 0" "[ \$(cat /rehearsal/audit_journal.rc) = 0 ]"
+  check "ssh ute-audit https-check: exit 0, the https checks pass" "[ \$(cat /rehearsal/audit_https-check.rc) = 0 ] && grep -q 'answered by THIS engine' /rehearsal/audit_https-check.out"
   $AS 'sh -c id' >/dev/null 2>&1; R1=$?; $AS 'snapshot; id' >/dev/null 2>&1; R2=$?; $AS bash >/dev/null 2>&1; R3=$?; $AS not-a-subcommand >/dev/null 2>&1; R4=$?
   check "refused (exit 2): a shell command, a chained command, bash, an unknown subcommand" "[ $R1 = 2 ] && [ $R2 = 2 ] && [ $R3 = 2 ] && [ $R4 = 2 ]"
   check "refused: remote port forwarding (restrict)" "! ssh -i /root/auditkey -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ExitOnForwardFailure=yes -R 18002:127.0.0.1:22 ute-audit@127.0.0.1 help >/dev/null 2>&1"
