@@ -63,6 +63,7 @@ TEK='runuser -u ute -- bash -c "set -a; . /etc/etoro-ute/readonly-credentials.en
 7. **Align the configuration:**
    ```bash
    install -m 640 -o root -g ute /home/ute/current/config/engine.single529.yaml /etc/etoro-ute/engine.yaml
+sed -i "s#^  strategies_dir: .*#  strategies_dir: /home/ute/current/strategies#" /etc/etoro-ute/engine.yaml
    ```
 8. **Start and verify:**
    ```bash

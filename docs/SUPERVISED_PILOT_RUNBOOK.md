@@ -22,7 +22,8 @@ close nothing.
    - It is stored as `/etc/etoro-ute/trading-credentials.env` (root:ute 0640, LF).
    - The file defines exactly `UTE_ETORO_TRADING_API_KEY` and `UTE_ETORO_TRADING_USER_KEY`.
    - Only `etoro-ute.service` loads it.
-5. The configuration is `config/engine.pilot.yaml`, installed as `/etc/etoro-ute/engine.yaml`. It sets
+5. The configuration is `config/engine.pilot.yaml`, installed as `/etc/etoro-ute/engine.yaml`. After installing it, set the
+   absolute strategies path: `sed -i "s#^  strategies_dir: .*#  strategies_dir: /home/ute/current/strategies#" /etc/etoro-ute/engine.yaml`. It sets
    `supervised_live` and the pilot limits.
 6. The owner approval file `/etc/etoro-ute/pilot-approval.json`, root:ute 0640:
    ```json

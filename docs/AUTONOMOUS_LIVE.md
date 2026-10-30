@@ -17,6 +17,11 @@
 
 ## One-time activation: every gate is required
 
+**Installing any config template by hand** (live, single529, pilot): set the absolute strategies path afterwards,
+`sed -i "s#^  strategies_dir: .*#  strategies_dir: /home/ute/current/strategies#" /etc/etoro-ute/engine.yaml`.
+`install.sh` does this on every deployment, but a hand-installed template keeps the relative path and the engine
+refuses to start.
+
 1. **The code gate.** `LIVE_RELEASE_ENABLED = True` is set only in this release. The SHADOW and pilot releases
    contain `False`.
 2. **Two configuration switches,** both required, each refused alone:
@@ -95,7 +100,7 @@ normal strategy rebalance.
 ## Rollback
 
 1. Stop: `systemctl stop etoro-ute.service`.
-2. Install `config/engine.single529.yaml` (SHADOW). The activation stays inert, because it is bound to the live
+2. Install `config/engine.single529.yaml` (SHADOW), with the absolute path: `sed -i "s#^  strategies_dir: .*#  strategies_dir: /home/ute/current/strategies#" /etc/etoro-ute/engine.yaml`. The activation stays inert, because it is bound to the live
    configuration.
 3. In SHADOW, if wanted, return to the SHADOW release: `sync_vps.sh --ref v0.9.0rc3 --expect-sha 7f6109d…`.
 
