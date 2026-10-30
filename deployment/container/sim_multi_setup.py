@@ -28,6 +28,19 @@ def config(rel, out, csv_dir, home):
     pathlib.Path(out).write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
 
 
+def pilot_config(rel, out, csv_dir, home):
+    """SUPERVISED pilot rehearsal (pilot release only): simulated broker, one 100% QC_529_ETORO_RESTRICTED sleeve, the
+    P1 limits of config/engine.pilot.yaml (approval/forbidden files are only used by supervised_live)."""
+    config(rel, out, csv_dir, home)
+    cfg = yaml.safe_load(pathlib.Path(out).read_text(encoding="utf-8"))
+    pilot = yaml.safe_load((pathlib.Path(rel) / "config" / "engine.pilot.yaml").read_text(encoding="utf-8"))["pilot"]
+    cfg["engine"]["instance_id"] = "ute-pilot-sim-rehearsal"
+    cfg["runtime"]["mode"] = "supervised_simulation"
+    cfg["portfolio"]["sleeves"] = [{"strategy": "QC_529_ETORO_RESTRICTED", "weight": 1.0}]
+    cfg["pilot"] = pilot
+    pathlib.Path(out).write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+
+
 def fixtures(rel, out):
     src = pathlib.Path(rel) / "tests" / "fixtures" / "snapshots" / "930795e32531bedc"
     dst = pathlib.Path(out)
@@ -102,4 +115,4 @@ def check(home):
 if __name__ == "__main__":
     cmd, *args = sys.argv[1:]
     {"config": config, "fixtures": fixtures, "fault": fault, "check": check,
-     "force-decision": force_decision}[cmd](*args)
+     "force-decision": force_decision, "pilot-config": pilot_config}[cmd](*args)

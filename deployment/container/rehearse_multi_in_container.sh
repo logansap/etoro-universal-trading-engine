@@ -153,6 +153,34 @@ P
   systemctl stop ute-dash-rehearsal > /dev/null 2>&1
   check "dashboard as ute under the production sandbox: 401 without a session; both sleeves; capital VERIFIED; POST/DELETE 405" "grep -q '\"api_without_session\": 401' /rehearsal/dashboard_probe.json && grep -q QC_529_ETORO_RESTRICTED /rehearsal/dashboard_probe.json && grep -q '\"capital_status\": \"VERIFIED\"' /rehearsal/dashboard_probe.json && grep -q '\"post_to_api\": 405' /rehearsal/dashboard_probe.json && grep -q '\"delete_to_api\": 405' /rehearsal/dashboard_probe.json && grep -q '\"migration\": 200' /rehearsal/dashboard_probe.json"
 
+  if grep -q '^SUPERVISED_PILOT_RELEASE = True' /home/ute/current/src/utengine/core/security.py 2>/dev/null; then
+  say "## P. SUPERVISED pilot (pilot release; simulated broker, sandboxed unit as ute, CLI approvals)"
+  PCFG=/etc/etoro-ute/engine.sim-pilot.yaml; PHOME=/home/ute/data/sim-pilot
+  install -d -m 0750 -o ute -g ute "$PHOME"
+  $PY $HELP pilot-config /home/ute/current "$PCFG" /home/ute/data/sim-fixtures "$PHOME"; chown root:ute "$PCFG"; chmod 640 "$PCFG"
+  psim() { systemd-run --wait --pipe --quiet --collect -p User=ute -p Group=ute -p ProtectSystem=strict -p ProtectHome=tmpfs           -p PrivateTmp=yes -p NoNewPrivileges=yes -p BindReadOnlyPaths=/home/ute -p BindPaths=/home/ute/data           -p InaccessiblePaths=-/home/engine -p ReadOnlyPaths=/etc/etoro-ute "$TE" --config "$PCFG" --home "$PHOME" "$@"; }
+  psubs() { $PY -c "import json; print(len(json.load(open('$PHOME/sim_broker.json'))['submissions']))"; }
+  psim --now $D1 sim deposit --amount 2000 --evidence "pilot rehearsal funding" > /dev/null 2>&1
+  psim --now $D1 run --once > /rehearsal/pilot_d1.log 2>&1
+  psim --now $X1 run --once > /rehearsal/pilot_x1.log 2>&1
+  check "pilot: config validates as supervised_simulation with the P1 limits" "psim config validate"
+  check "pilot: no order reaches the broker without approval (0 submissions, plan AWAITING_APPROVAL)" "[ \$(psubs) -eq 0 ] && sqlite3 $PHOME/engine.sqlite \"select status from plans\" | grep -q AWAITING_APPROVAL"
+  psim orders pending > /rehearsal/pilot_pending.json 2>&1
+  check "pilot: orders pending lists the intents (CLI as ute, no broker key)" "$PY -c \"import json; d=json.load(open('/rehearsal/pilot_pending.json')); assert d and all(p['approval'] is None for p in d)\""
+  I1=$($PY -c "import json; print(sorted(p['intent_id'] for p in json.load(open('/rehearsal/pilot_pending.json')))[0])")
+  check "pilot: orders approve (one intent)" "psim orders approve --intent $I1 --approved-by rehearsal-owner | grep -q approved_by"
+  psim --now 2026-10-27T13:37:00+00:00 run --once > /rehearsal/pilot_x1b.log 2>&1
+  check "pilot: exactly the approved intent was sent" "[ \$(psubs) -eq 1 ] && grep -q $I1 $PHOME/sim_broker.json"
+  psim --now 2026-10-27T13:39:00+00:00 run --once > /rehearsal/pilot_x1c.log 2>&1
+  check "pilot: a restart and another cycle resend nothing" "[ \$(psubs) -eq 1 ]"
+  check "pilot: kill-switch engages (file + halt ALL)" "psim kill-switch --operator rehearsal-owner --reason rehearsal && [ -e $PHOME/KILL_SWITCH ]"
+  I2=$($PY -c "import json; print(sorted(p['intent_id'] for p in json.load(open('/rehearsal/pilot_pending.json')))[-1])")
+  psim orders approve --intent $I2 --approved-by rehearsal-owner > /dev/null 2>&1
+  psim --now 2026-10-27T13:41:00+00:00 run --once > /rehearsal/pilot_x1d.log 2>&1
+  check "pilot: with the kill switch engaged an approved order is BLOCKED, never sent" "[ \$(psubs) -eq 1 ] && sqlite3 $PHOME/engine.sqlite \"select status from intents where intent_id='$I2'\" | grep -qx BLOCKED"
+  check "pilot: the production instance is untouched (still shadow, no write capability)" "asute $TE status | grep -q '\"write_capability\": false' && grep -q '^  mode: shadow' /etc/etoro-ute/engine.yaml"
+  fi
+
   say "## D. adversarial refusals"
   sed 's/weight: 0.50/weight: 0.60/' /etc/etoro-ute/engine.yaml > /rehearsal/bad_weights.yaml; chmod 644 /rehearsal/bad_weights.yaml
   asute $TE --config /rehearsal/bad_weights.yaml config validate > /rehearsal/bad_weights.out 2>&1
