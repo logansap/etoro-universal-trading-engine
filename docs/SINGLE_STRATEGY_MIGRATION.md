@@ -60,9 +60,12 @@ TEK='runuser -u ute -- bash -c "set -a; . /etc/etoro-ute/readonly-credentials.en
 5. **Preview the restructure:** `portfolio restructure-preview --weights QC_529_ETORO_RESTRICTED=1.0`, run with `TEK`.
    It prints the `preview_hash`, the transfers, `retired: [QC_60_SQQQ]` and the new weights.
 6. **Apply within 15 minutes:** `portfolio restructure --preview-hash <hash> --approved-by owner`, run with `TEK`.
-7. **Align the configuration:**
+7. **Align the configuration.** The template's `strategies_dir` is relative; `install.sh` makes it absolute on every
+   deployment, so a template installed by hand must get the same absolute path (lesson from the 2026-10-30 takeover:
+   without it the engine refuses to start, *no strategy YAML*):
    ```bash
    install -m 640 -o root -g ute /home/ute/current/config/engine.single529.yaml /etc/etoro-ute/engine.yaml
+sed -i "s#^  strategies_dir: .*#  strategies_dir: /home/ute/current/strategies#" /etc/etoro-ute/engine.yaml
    ```
 8. **Start and verify:**
    ```bash
