@@ -276,3 +276,36 @@ def test_log_and_backup_dirs_can_live_outside_the_state_directory(tmp_path, monk
     (tmp_path / "nightly").mkdir()
     (tmp_path / "nightly" / "engine-20261030T000000Z.manifest.json").write_text("{}")
     assert d.operations()["backups"] == ["engine-20261030T000000Z.manifest.json"]
+
+
+@pytest.mark.parametrize("trust_proxy", [True, False])
+def test_lockout_is_per_real_client_behind_the_local_proxy(tmp_path, trust_proxy):
+    """INVARIANT (single login behind nginx): with --trust-proxy, failed logins are counted per X-Real-IP (set by the
+    local proxy), so an attacker locks out only itself, never the owner; without it the header is ignored (every
+    request counts against the socket address). A malformed header falls back to the socket address."""
+    env, e, d = setup(tmp_path)
+    S.set_password(env.home, PW)
+    box = {}
+    threading.Thread(target=S.serve, args=(d, env.home), kwargs={"port": 0, "env": {}, "trust_proxy": trust_proxy,
+                     "ready": lambda h: box.update(h=h)}, daemon=True).start()
+    while "h" not in box:
+        pass
+    h = box["h"]
+
+    def post(pw, real_ip):
+        c = http.client.HTTPConnection("127.0.0.1", h.server_address[1], timeout=10)
+        c.request("POST", "/login", body=urllib.parse.urlencode({"password": pw}),
+                  headers={"Content-Type": "application/x-www-form-urlencoded", "X-Real-IP": real_ip})
+        r = c.getresponse()
+        r.read()
+        return r.status
+    try:
+        for _ in range(5):
+            assert post("wrong password!!", "203.0.113.5") == 401
+        assert post(PW, "203.0.113.5") == 429                        # the attacker's address is locked out
+        owner = post(PW, "198.51.100.7")
+        assert owner == (303 if trust_proxy else 429)                # the owner logs in (only behind a trusted proxy)
+        if trust_proxy:
+            assert post(PW, "not-an-address") == 303                 # malformed: socket address (not locked)
+    finally:
+        h.shutdown()

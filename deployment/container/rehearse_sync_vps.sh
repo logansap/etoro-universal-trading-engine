@@ -126,24 +126,28 @@ P
   RC=$(run_sync --sha "$A")
   check "re-sync of the same commit is idempotent (release reused) and enables the dashboard" "[ $RC = 0 ] && grep -q 'already installed: reusing' /rehearsal/sync.out && systemctl is-active --quiet etoro-ute-dashboard"
   python3 - > /rehearsal/dash_probe.json 2>&1 <<'P'
-import http.cookiejar, json, urllib.request, urllib.error
-base = "http://127.0.0.1:8790"
-def st(u, op=urllib.request.build_opener()):
-    try: return op.open(u, timeout=10).status
-    except urllib.error.HTTPError as e: return e.code
-cj = http.cookiejar.CookieJar(); op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-out = {"no_session": st(base + "/api/overview")}
-op.open(urllib.request.Request(base + "/login", data=b"password=rehearsal-dashboard-pw-0001", method="POST"), timeout=10)
-out["overview"] = st(base + "/api/overview", op); out["migration"] = st(base + "/api/migration", op)
-out["delete"] = st(urllib.request.Request(base + "/api/overview", method="DELETE"), op)
+import http.client, json
+# the unit sets --secure-cookie: a client honouring Secure never returns the cookie over plain http, so the cookie is
+# taken from the login response and presented by hand (a browser on http://localhost, the SSH-tunnel fallback, does)
+def req(method, path, body=None, cookie=None):
+    c = http.client.HTTPConnection("127.0.0.1", 8790, timeout=10)
+    h = {"Content-Type": "application/x-www-form-urlencoded"} if body else {}
+    if cookie: h["Cookie"] = cookie
+    c.request(method, path, body=body, headers=h); r = c.getresponse(); r.read()
+    return r.status, r.getheader("Set-Cookie") or ""
+out = {"no_session": req("GET", "/api/overview")[0]}
+code, sc = req("POST", "/login", b"password=rehearsal-dashboard-pw-0001")
+out["login"] = code; out["cookie_secure"] = "; Secure" in sc; ck = sc.split(";")[0]
+out["overview"] = req("GET", "/api/overview", cookie=ck)[0]; out["migration"] = req("GET", "/api/migration", cookie=ck)[0]
+out["delete"] = req("DELETE", "/api/overview", cookie=ck)[0]
 print(json.dumps(out))
 P
-  check "dashboard: 401 without a session, 200 after login, DELETE 405, loopback only" "grep -q '\"no_session\": 401' /rehearsal/dash_probe.json && grep -q '\"overview\": 200' /rehearsal/dash_probe.json && grep -q '\"delete\": 405' /rehearsal/dash_probe.json && ss -ltn | grep -q '127.0.0.1:8790' && ! ss -ltn | grep -qE '(0.0.0.0|\\*):8790'"
+  check "dashboard: 401 without a session, login sets a Secure cookie, 200 with it, DELETE 405, loopback only" "grep -q '\"no_session\": 401' /rehearsal/dash_probe.json && grep -q '\"cookie_secure\": true' /rehearsal/dash_probe.json && grep -q '\"overview\": 200' /rehearsal/dash_probe.json && grep -q '\"delete\": 405' /rehearsal/dash_probe.json && ss -ltn | grep -q '127.0.0.1:8790' && ! ss -ltn | grep -qE '(0.0.0.0|\\*):8790'"
   DPID=$(systemctl show -p MainPID --value etoro-ute-dashboard)
   check "dashboard process: no broker credential variable, /home/engine invisible" "! tr '\\0' '\\n' < /proc/$DPID/environ | grep -q 'ETORO' && [ ! -e /proc/$DPID/root/home/engine ]"
 
 
-  say "## E2. HTTPS dashboard (GitOps): one-time bootstrap replacing a previous site on the same name"
+  say "## E2. HTTPS dashboard (GitOps): one-time bootstrap replacing a previous site; ONE login (the engine's)"
   DH=ute-rehearsal.test
   rm -f /etc/nginx/sites-enabled/default
   mkdir -p /var/www/mock-gm /var/www/letsencrypt "/etc/letsencrypt/live/$DH"
@@ -152,24 +156,43 @@ P
   ln -sf /etc/nginx/sites-available/mock-gm-site.conf /etc/nginx/sites-enabled/mock-gm-site.conf
   openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=$DH" -keyout "/etc/letsencrypt/live/$DH/privkey.pem" \
     -out "/etc/letsencrypt/live/$DH/fullchain.pem" >/dev/null 2>&1
-  htpasswd -bc /root/rehearsal.htpasswd owner basic-pw-0001 >/dev/null 2>&1
   systemctl enable --now nginx >/dev/null 2>&1
   check "before: the previous site serves the name" "curl -s --resolve $DH:80:127.0.0.1 http://$DH/ | grep -q MOCK"
   EPID=$(systemctl show -p MainPID --value etoro-ute)
-  bash "$UTE_CURRENT/deployment/https_dashboard.sh" bootstrap --host $DH --htpasswd-from /root/rehearsal.htpasswd \
-    --replace-site mock-gm-site.conf > /rehearsal/https_bootstrap.out 2>&1; RC=$?
-  check "bootstrap: exit 0, host.env root:ute 640, own basic-auth copy, previous site link removed (file kept)" "[ $RC = 0 ] && [ \"\$(stat -c '%a %U:%G' /etc/etoro-ute/host.env)\" = '640 root:ute' ] && [ -s /etc/nginx/ute-dashboard.htpasswd ] && [ ! -e /etc/nginx/sites-enabled/mock-gm-site.conf ] && [ -f /etc/nginx/sites-available/mock-gm-site.conf ]"
+  bash "$UTE_CURRENT/deployment/https_dashboard.sh" bootstrap --host $DH --replace-site mock-gm-site.conf > /rehearsal/https_bootstrap.out 2>&1; RC=$?
+  check "bootstrap: exit 0, host.env root:ute 640, previous site link removed (its file kept), no basic auth" "[ $RC = 0 ] && [ \"\$(stat -c '%a %U:%G' /etc/etoro-ute/host.env)\" = '640 root:ute' ] && [ ! -e /etc/nginx/sites-enabled/mock-gm-site.conf ] && [ -f /etc/nginx/sites-available/mock-gm-site.conf ] && ! grep -q auth_basic /etc/nginx/sites-available/ute-dashboard.conf"
   check "bootstrap did not restart the trading engine" "[ \$(systemctl show -p MainPID --value etoro-ute) = $EPID ]"
   H="--resolve $DH:80:127.0.0.1 --resolve $DH:443:127.0.0.1 -k -s"
-  check "http -> https 301; https without basic auth 401 (page and data)" "[ \$(curl $H -o /dev/null -w '%{http_code}' http://$DH/) = 301 ] && [ \$(curl $H -o /dev/null -w '%{http_code}' https://$DH/) = 401 ] && [ \$(curl $H -o /dev/null -w '%{http_code}' https://$DH/api/overview) = 401 ]"
+  check "http -> https 301; the page redirects to the login (303); no data without a session (401)" "[ \$(curl $H -o /dev/null -w '%{http_code}' http://$DH/) = 301 ] && [ \$(curl $H -o /dev/null -w '%{http_code}' https://$DH/) = 303 ] && [ \$(curl $H -o /dev/null -w '%{http_code}' https://$DH/api/overview) = 401 ]"
   rm -f /rehearsal/cj.txt
-  curl $H -u owner:basic-pw-0001 -c /rehearsal/cj.txt -D /rehearsal/https_login_headers.txt -o /dev/null -X POST -d 'password=rehearsal-dashboard-pw-0001' https://$DH/login
-  check "basic auth alone gives no data (engine session required: 401)" "[ \$(curl $H -u owner:basic-pw-0001 -o /dev/null -w '%{http_code}' https://$DH/api/overview) = 401 ]"
-  check "full HTTPS chain: basic auth + engine login -> data 200; session cookie HttpOnly, SameSite=Strict, Secure" "[ \$(curl $H -u owner:basic-pw-0001 -b /rehearsal/cj.txt -o /dev/null -w '%{http_code}' https://$DH/api/overview) = 200 ] && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'secure' && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'httponly' && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'samesite=strict'"
-  check "other methods refused; dotfiles refused; the basic-auth credential is not forwarded" "[ \$(curl $H -u owner:basic-pw-0001 -o /dev/null -w '%{http_code}' -X DELETE https://$DH/api/overview) = 403 ] && [ \$(curl $H -u owner:basic-pw-0001 -o /dev/null -w '%{http_code}' https://$DH/.env) = 403 ] && grep -q 'proxy_set_header Authorization \"\"' /etc/nginx/ute-dashboard-proxy.inc"
-  check "the engine dashboard stays loopback-only" "! ss -ltn | grep -qE '(0.0.0.0|\*|\[::\]):8790'"
+  curl $H -c /rehearsal/cj.txt -D /rehearsal/https_login_headers.txt -o /dev/null -X POST -d 'password=rehearsal-dashboard-pw-0001' https://$DH/login
+  check "ONE login over HTTPS -> data 200; session cookie HttpOnly, SameSite=Strict, Secure" "[ \$(curl $H -b /rehearsal/cj.txt -o /dev/null -w '%{http_code}' https://$DH/api/overview) = 200 ] && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'secure' && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'httponly' && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'samesite=strict'"
+  check "other methods refused; dotfiles refused; no Authorization header forwarded" "[ \$(curl $H -o /dev/null -w '%{http_code}' -X DELETE https://$DH/api/overview) = 403 ] && [ \$(curl $H -o /dev/null -w '%{http_code}' https://$DH/.env) = 403 ] && grep -q 'proxy_set_header Authorization \"\"' /etc/nginx/ute-dashboard-proxy.inc"
+  for i in 1 2 3 4 5 6 7 8; do curl $H -o /dev/null -w '%{http_code}\n' -X POST -d 'password=wrong' https://$DH/login; done > /rehearsal/https_bruteforce.txt
+  check "brute force through nginx: refused by the rate limit / per-address lockout (429), never a session" "grep -q 429 /rehearsal/https_bruteforce.txt && ! grep -q 303 /rehearsal/https_bruteforce.txt"
+  # spoofed X-Real-IP / X-Forwarded-For from the client: nginx overwrites both, so every failure still counts against
+  # the real address (127.0.0.1 here) and a fresh spoofed address cannot escape the lockout; another real address can
+  : > /rehearsal/https_spoof.txt
+  for i in 1 2 3 4 5 6 7; do
+    curl $H -o /rehearsal/spoof_body.txt -w '%{http_code}\n' -H "X-Real-IP: 198.51.100.$i" -H "X-Forwarded-For: 198.51.100.$i" \
+      -X POST -d 'password=wrong' https://$DH/login >> /rehearsal/https_spoof.txt
+    grep -q 'Too many failed logins' /rehearsal/spoof_body.txt && break
+    sleep 11                                         # one request per 10 s gets past nginx's login rate limit
+  done
+  sleep 11
+  SP=$(curl $H -o /rehearsal/spoof_body.txt -w '%{http_code}' -H 'X-Real-IP: 203.0.113.77' -H 'X-Forwarded-For: 203.0.113.77' \
+    -X POST -d 'password=rehearsal-dashboard-pw-0001' https://$DH/login)
+  check "spoofed X-Real-IP/X-Forwarded-For are overwritten: the locked-out real client stays locked out (engine 429)" "[ $SP = 429 ] && grep -q 'Too many failed logins' /rehearsal/spoof_body.txt && grep -q 'X-Forwarded-For \$remote_addr' /etc/nginx/ute-dashboard-proxy.inc"
+  CIP=$(hostname -I | awk '{print $1}')
+  check "another real client address ($CIP) is not locked out by the attacker: correct password -> session (303)" "[ \$(curl -k -s --resolve $DH:443:$CIP -o /dev/null -w '%{http_code}' -X POST -d 'password=rehearsal-dashboard-pw-0001' https://$DH/login) = 303 ]"
+  check "the engine dashboard stays loopback-only and runs with --secure-cookie --trust-proxy" "! ss -ltn | grep -qE '(0.0.0.0|\*|\[::\]):8790' && systemctl show -p ExecStart --value etoro-ute-dashboard | grep -q -- '--trust-proxy'"
   bash "$UTE_CURRENT/deployment/verify_vps.sh" > /rehearsal/verify_https.out 2>&1
-  check "verify_vps.sh: the https checks pass and ALL CHECKS PASSED" "grep -q 'PASS  https dashboard: no data without basic auth' /rehearsal/verify_https.out && grep -q 'ALL CHECKS PASSED' /rehearsal/verify_https.out"
+  check "verify_vps.sh: the https checks pass and ALL CHECKS PASSED" "grep -q 'PASS  https dashboard: no data without a session' /rehearsal/verify_https.out && grep -q 'ALL CHECKS PASSED' /rehearsal/verify_https.out"
+  bash "$UTE_CURRENT/deployment/https_dashboard.sh" restore > /rehearsal/https_restore.out 2>&1; RC=$?
+  check "one-command restore: /etc/nginx as before bootstrap (the previous site serves the name again), host.env set aside" "[ $RC = 0 ] && curl -s --resolve $DH:80:127.0.0.1 http://$DH/ | grep -q MOCK && [ ! -e /etc/nginx/sites-enabled/ute-dashboard.conf ] && [ ! -f /etc/etoro-ute/host.env ] && ls /etc/etoro-ute/host.env.disabled-* >/dev/null"
+  check "the engine kept running through the restore" "[ \$(systemctl show -p MainPID --value etoro-ute) = $EPID ]"
+  bash "$UTE_CURRENT/deployment/https_dashboard.sh" bootstrap --host $DH --replace-site mock-gm-site.conf > /rehearsal/https_bootstrap2.out 2>&1; RC=$?
+  check "bootstrap again after the restore: exit 0, the https checks pass" "[ $RC = 0 ] && grep -q 'PASS  https dashboard: no data without a session' /rehearsal/https_bootstrap2.out && ! grep -q FAIL /rehearsal/https_bootstrap2.out"
 
   say "## F. guards: dirty checkout, concurrent deployment, unpublished commit"
   touch "$UTE_CHECKOUT/LOCAL_EDIT"
@@ -194,11 +217,11 @@ P
   check "drift is reported by check (WARN, not a failure)" "bash $UTE_CURRENT/deployment/https_dashboard.sh check | grep -q 'WARN  https dashboard: nginx site differs'"
   RC=$(run_sync --sha "$B"); cp /rehearsal/sync.out /rehearsal/sync_drift.out
   check "GitOps: the next sync restores the site from git (applied, backup taken, nginx -t, reload)" "[ $RC = 0 ] && grep -q 'https dashboard: applied from release' /rehearsal/sync_drift.out && ! grep -q 'hand edit' /etc/nginx/sites-available/ute-dashboard.conf && ls $UTE_DEPLOY/nginx-backup-*.tar.gz >/dev/null"
-  mv /etc/nginx/ute-dashboard.htpasswd /root/htpasswd.aside
+  mv /etc/letsencrypt/live/ute-rehearsal.test /root/cert.aside
   echo "# another edit" >> /etc/nginx/sites-available/ute-dashboard.conf
   RC=$(run_sync --sha "$B"); cp /rehearsal/sync.out /rehearsal/sync_https_fail.out
   check "a site that cannot be applied: engine deployed and verified, exit 6, previous site still served" "[ $RC = 6 ] && grep -q 'DASHBOARD_SITE_NOT_UPDATED' /rehearsal/sync_https_fail.out && [ \$(cur) = ${B:0:12} ]"
-  mv /root/htpasswd.aside /etc/nginx/ute-dashboard.htpasswd
+  mv /root/cert.aside /etc/letsencrypt/live/ute-rehearsal.test
   RC=$(run_sync --sha "$B")
   check "after the fix the next sync applies it again (exit 0)" "[ $RC = 0 ] && grep -q 'https dashboard: applied' /rehearsal/sync.out"
   check "--expect-sha mismatch is refused" "[ \$(run_sync --ref v0.0.0-rehearsal-b --expect-sha $A) = 2 ]"
@@ -243,7 +266,7 @@ sleep 10
 . /rehearsal/commits.env
 check "engine and dashboard started at boot on release B" "systemctl is-active --quiet etoro-ute && systemctl is-active --quiet etoro-ute-dashboard && [ \$(cur) = ${B:0:12} ]"
 check "verify_vps.sh --expect-commit B passes after boot" "bash $UTE_CURRENT/deployment/verify_vps.sh --expect-commit $B > /rehearsal/verify_boot.out"
-check "the HTTPS dashboard serves after boot (301, 401 without basic auth)" "[ \$(curl -k -s -o /dev/null -w %{http_code} --resolve ute-rehearsal.test:80:127.0.0.1 http://ute-rehearsal.test/) = 301 ] && [ \$(curl -k -s -o /dev/null -w %{http_code} --resolve ute-rehearsal.test:443:127.0.0.1 https://ute-rehearsal.test/api/overview) = 401 ]"
+check "the HTTPS dashboard serves after boot (301; no data without a session: 401)" "[ \$(curl -k -s -o /dev/null -w %{http_code} --resolve ute-rehearsal.test:80:127.0.0.1 http://ute-rehearsal.test/) = 301 ] && [ \$(curl -k -s -o /dev/null -w %{http_code} --resolve ute-rehearsal.test:443:127.0.0.1 https://ute-rehearsal.test/api/overview) = 401 ]"
 check "Gold Miner untouched across the whole rehearsal (files and units)" "[ \"\$(gm_hash)\" = \"\$(cat /rehearsal/gm_hash_before)\" ] && systemctl is-active --quiet gold-miner-engine.timer"
 OUTSIDE=$(find / -xdev -user ute -not -path '/home/ute/data*' -not -path '/home/ute/logs*' -not -path '/home/ute/backups/nightly*' -not -path '/proc/*' 2>/dev/null)
 say "  files owned by ute outside /home/ute/{data,logs,backups/nightly}: ${OUTSIDE:-none}"

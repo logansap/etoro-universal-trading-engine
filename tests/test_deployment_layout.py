@@ -81,26 +81,29 @@ def test_deployment_scripts_parse(script):
 NGX = DEP / "nginx"
 
 
-def test_https_site_template_carries_no_address_and_keeps_the_engine_behind_two_logins():
+def test_https_site_template_carries_no_address_and_one_login_behind_rate_limits():
     """INVARIANT: the public repository never carries the server's address (a placeholder, filled from the host-only
-    /etc/etoro-ute/host.env); the site keeps HTTPS, basic auth, method and dotfile limits, a login rate limit, and
-    proxies only to the loopback dashboard without forwarding the basic-auth credential."""
+    /etc/etoro-ute/host.env); ONE login (the engine's; no basic auth), HTTPS, method and dotfile limits, a login rate
+    limit, the real client address always overwritten for the engine's per-address lockout, proxy to loopback only."""
     t = (NGX / "ute-dashboard.conf.template").read_text(encoding="utf-8")
     inc = (NGX / "ute-dashboard-proxy.inc").read_text(encoding="utf-8")
     public = (t + inc).replace("127.0.0.1", "")             # loopback is fine; any other address is not
     assert "__SERVER_NAME__" in t and not re.search(r"\d{1,3}[.-]\d{1,3}[.-]\d{1,3}[.-]\d{1,3}", public)
     assert "return 301 https://__SERVER_NAME__" in t and "listen 443 ssl" in t
-    assert "auth_basic_user_file /etc/nginx/ute-dashboard.htpasswd" in t
+    assert "auth_basic" not in t and "htpasswd" not in t                # one login page: the engine's
     assert t.count("limit_except GET HEAD POST { deny all; }") == 2 and "location ~ /\\. { deny all; }" in t
     assert "zone=ute_login" in t and "limit_req_status 429" in t and "Strict-Transport-Security" in t
     assert "/.well-known/acme-challenge/" in t                       # certificate renewal keeps working
     assert "proxy_pass http://127.0.0.1:8790;" in inc and 'proxy_set_header Authorization "";' in inc
+    assert "proxy_set_header X-Real-IP $remote_addr;" in inc            # overwrites any client-supplied value
+    assert "proxy_set_header X-Forwarded-For $remote_addr;" in inc and "proxy_add_x_forwarded_for" not in inc
+    assert "http2 on" not in t                                          # nginx 1.24 (Ubuntu 24.04) refuses it
     assert "/home/engine" not in t + inc and "gold-miner" not in (t + inc).lower()   # no Gold Miner dependency
 
 
 def test_dashboard_unit_sets_the_secure_cookie_and_stays_loopback():
     u = unit(DEP / "etoro-ute-dashboard.service")["Service"]["ExecStart"]
-    assert "--secure-cookie" in u and "--host 127.0.0.1" in u and "--allow-remote" not in u
+    assert "--secure-cookie" in u and "--trust-proxy" in u and "--host 127.0.0.1" in u and "--allow-remote" not in u
 
 
 def test_sync_applies_the_dashboard_site_only_after_a_verified_deployment_and_accepts_any_sleeve_portfolio():
@@ -110,3 +113,5 @@ def test_sync_applies_the_dashboard_site_only_after_a_verified_deployment_and_ac
     assert "QC_60_SQQQ" not in s and "both 50/50 sleeves" not in s          # a 100% single-sleeve portfolio deploys
     h = (DEP / "https_dashboard.sh").read_text(encoding="utf-8")
     assert "nginx -t" in h and "systemctl reload nginx" in h and "restart etoro-ute.service" not in h
+    i_bk, i_env = h.index("NGINX_BACKUP_TAKEN=$(backup)"), h.index("> \"$HOST_ENV\"")
+    assert i_bk < i_env and "  restore)" in h                           # backup before bootstrap changes anything

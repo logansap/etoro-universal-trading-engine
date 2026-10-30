@@ -160,28 +160,34 @@ repository never carries the server's address.
 
 **One-time bootstrap** (first deployment of the HTTPS dashboard; root on the VPS):
 ```bash
-bash /home/ute/current/deployment/https_dashboard.sh bootstrap --host <name> --htpasswd-from <existing .htpasswd> --replace-site <sites-enabled entry that served <name> before>
+bash /home/ute/current/deployment/https_dashboard.sh bootstrap --host <name> --replace-site <sites-enabled entry that served <name> before>
 ```
 - It needs a certificate at `/etc/letsencrypt/live/<name>/`; renewal keeps working through
   `/.well-known/acme-challenge/` on port 80.
-- It gives the site its own copy of the basic-auth file.
 - It only removes the *link* of the replaced site; the site's file is kept.
 
-**Access** takes two logins:
-1. nginx basic auth;
-2. the engine's own login (session cookie HttpOnly, SameSite=Strict, Secure).
+**Access:** ONE login, the engine's own. It uses a scrypt-hashed password, an 8-hour session, and a cookie that is
+HttpOnly, SameSite=Strict and Secure. There is no basic auth.
 
-What else the site enforces:
-- the Basic-Auth credential is never forwarded to the engine;
+What the site enforces:
+- failed logins are counted per real client address (nginx always overwrites `X-Real-IP`; the engine runs with
+  `--trust-proxy`), so an attacker locks out only itself;
+- `/login` is limited to 6 requests per minute per address (429 when exceeded);
+- no `Authorization` header is ever forwarded;
 - only GET, HEAD and POST are allowed;
 - dotfiles are refused;
-- `/login` is limited to 6 requests per minute (429 when exceeded);
 - the engine stays bound to `127.0.0.1:8790`.
+
+Use a strong dashboard password: it is the only one.
 
 **Commands:**
 - **Check** (read-only, also part of `verify_vps.sh`): `bash /home/ute/current/deployment/https_dashboard.sh check`.
-- **Disable:** `https_dashboard.sh rollback`. It re-enables the replaced site. Then remove `/etc/etoro-ute/host.env`
-  so that later syncs leave nginx alone.
+- **Roll back (one command):** `https_dashboard.sh restore`. It puts `/etc/nginx` back exactly as it was before
+  bootstrap (bootstrap takes that backup first), checks it with `nginx -t` and reloads. A backup that fails `nginx -t`
+  is not left in place.
+- **Disable:** `https_dashboard.sh rollback`. It removes this site and re-enables the replaced site.
+- Both commands set `/etc/etoro-ute/host.env` aside, so later syncs leave nginx alone. Run bootstrap again to
+  re-enable.
 
 **SSH tunnel fallback:**
 ```bash
