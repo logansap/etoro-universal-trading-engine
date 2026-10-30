@@ -93,6 +93,7 @@ def test_https_site_template_carries_no_address_and_one_login_behind_rate_limits
     assert "auth_basic" not in t and "htpasswd" not in t                # one login page: the engine's
     assert t.count("limit_except GET HEAD POST { deny all; }") == 2 and "location ~ /\\. { deny all; }" in t
     assert "zone=ute_login" in t and "limit_req_status 429" in t and "Strict-Transport-Security" in t
+    assert "limit_req_zone $ute_login_attempt zone=ute_login" in t and '"GET:"   "";' in t   # page views not counted
     assert "/.well-known/acme-challenge/" in t                       # certificate renewal keeps working
     assert "proxy_pass http://127.0.0.1:8790;" in inc and 'proxy_set_header Authorization "";' in inc
     assert "proxy_set_header X-Real-IP $remote_addr;" in inc            # overwrites any client-supplied value

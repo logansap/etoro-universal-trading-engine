@@ -168,6 +168,8 @@ P
   curl $H -c /rehearsal/cj.txt -D /rehearsal/https_login_headers.txt -o /dev/null -X POST -d 'password=rehearsal-dashboard-pw-0001' https://$DH/login
   check "ONE login over HTTPS -> data 200; session cookie HttpOnly, SameSite=Strict, Secure" "[ \$(curl $H -b /rehearsal/cj.txt -o /dev/null -w '%{http_code}' https://$DH/api/overview) = 200 ] && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'secure' && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'httponly' && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'samesite=strict'"
   check "other methods refused; dotfiles refused; no Authorization header forwarded" "[ \$(curl $H -o /dev/null -w '%{http_code}' -X DELETE https://$DH/api/overview) = 403 ] && [ \$(curl $H -o /dev/null -w '%{http_code}' https://$DH/.env) = 403 ] && grep -q 'proxy_set_header Authorization \"\"' /etc/nginx/ute-dashboard-proxy.inc"
+  for i in 1 2 3 4 5 6 7 8 9 10; do curl $H -o /dev/null -w '%{http_code}\n' https://$DH/login; done > /rehearsal/https_pageviews.txt
+  check "viewing the login page is not a login attempt: 10 page loads, all 200" "[ \$(grep -c '^200$' /rehearsal/https_pageviews.txt) = 10 ]"
   for i in 1 2 3 4 5 6 7 8; do curl $H -o /dev/null -w '%{http_code}\n' -X POST -d 'password=wrong' https://$DH/login; done > /rehearsal/https_bruteforce.txt
   check "brute force through nginx: refused by the rate limit / per-address lockout (429), never a session" "grep -q 429 /rehearsal/https_bruteforce.txt && ! grep -q 303 /rehearsal/https_bruteforce.txt"
   # spoofed X-Real-IP / X-Forwarded-For from the client: nginx overwrites both, so every failure still counts against

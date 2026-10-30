@@ -5,7 +5,14 @@
 # counted per real client address via X-Real-IP, lockout after 5 in 5 minutes) behind nginx's per-address rate limit.
 # The dashboard has no admin or trading endpoints, no broker credential, and opens its database read-only.
 
-limit_req_zone $binary_remote_addr zone=ute_login:1m rate=6r/m;      # POST /login: 6 per minute per client
+# login ATTEMPTS only (a POST, or a one-time link /login?otp=...): viewing the login page is not an attempt (an empty
+# key is not counted), so reloading the page or a health check never locks the owner out of logging in
+map "$request_method:$is_args" $ute_login_attempt {
+    "GET:"   "";
+    "HEAD:"  "";
+    default  $binary_remote_addr;
+}
+limit_req_zone $ute_login_attempt zone=ute_login:1m rate=6r/m;       # login attempts: 6 per minute per client
 limit_req_zone $binary_remote_addr zone=ute_all:5m rate=10r/s;       # everything else
 
 # ---- HTTP: certificate renewal + redirect to the canonical HTTPS name
@@ -54,6 +61,7 @@ server {
     location = /login {
         limit_except GET HEAD POST { deny all; }
         limit_req zone=ute_login burst=3 nodelay;
+        limit_req zone=ute_all burst=40 nodelay;
         include /etc/nginx/ute-dashboard-proxy.inc;
     }
     location / {
