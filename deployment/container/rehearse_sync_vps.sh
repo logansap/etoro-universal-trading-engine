@@ -214,7 +214,8 @@ P
 
   check "GitOps: the update reports the dashboard site (unchanged template) in step 8b" "grep -q '8b. HTTPS dashboard site' /rehearsal/sync_update.out && grep -q 'https dashboard: unchanged' /rehearsal/sync_update.out"
   echo "# hand edit" >> /etc/nginx/sites-available/ute-dashboard.conf
-  check "drift is reported by check (WARN, not a failure)" "bash $UTE_CURRENT/deployment/https_dashboard.sh check | grep -q 'WARN  https dashboard: nginx site differs'"
+  bash "$UTE_CURRENT/deployment/https_dashboard.sh" check > /rehearsal/https_drift.out 2>&1; RC=$?   # no pipe: SIGPIPE under pipefail
+  check "drift is reported by check (WARN, not a failure)" "[ $RC = 0 ] && grep -q 'WARN  https dashboard: nginx site differs' /rehearsal/https_drift.out"
   RC=$(run_sync --sha "$B"); cp /rehearsal/sync.out /rehearsal/sync_drift.out
   check "GitOps: the next sync restores the site from git (applied, backup taken, nginx -t, reload)" "[ $RC = 0 ] && grep -q 'https dashboard: applied from release' /rehearsal/sync_drift.out && ! grep -q 'hand edit' /etc/nginx/sites-available/ute-dashboard.conf && ls $UTE_DEPLOY/nginx-backup-*.tar.gz >/dev/null"
   mv /etc/letsencrypt/live/ute-rehearsal.test /root/cert.aside

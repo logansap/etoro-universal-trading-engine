@@ -40,6 +40,14 @@ backup() {   # -> path of a new root-only tarball of /etc/nginx
   local bk; bk=$UTE_DEPLOY/nginx-backup-$(date -u +%Y%m%dT%H%M%S%NZ).tar.gz
   tar -czf "$bk" -C / etc/nginx && chmod 600 "$bk" && echo "$bk"
 }
+settle() {   # nginx reload and a dashboard restart are asynchronous: wait (max 20 s) until the site answers as configured
+  local h=$1 i R="-s -o /dev/null -m 3 -w %{http_code} --resolve $1:80:127.0.0.1 --resolve $1:443:127.0.0.1"
+  for i in $(seq 40); do
+    [ "$(curl $R -I "http://$h/")" = 301 ] && [ "$(curl $R -k "https://$h/login")" = 200 ] && return 0
+    sleep 0.5
+  done
+  return 0                                     # check reports what is still wrong
+}
 disable_host_env() {
   [ -f "$HOST_ENV" ] && mv "$HOST_ENV" "$HOST_ENV.disabled-$(date -u +%Y%m%dT%H%M%SZ)"
   echo "host.env set aside: later syncs leave nginx alone (bootstrap again to re-enable)"
@@ -67,6 +75,7 @@ apply() {
   if nginx -t 2>"$tmp/nginx-t"; then
     systemctl reload nginx || die "nginx reload failed (configuration valid; see journalctl -u nginx)"
     echo "https dashboard: applied from release $(basename "$(readlink -f "$rel")") for $h (backup $bk)"
+    settle "$h"
     return 0
   fi
   cat "$tmp/nginx-t" >&2
@@ -121,6 +130,7 @@ case "$cmd" in
       nginx -t >/dev/null 2>&1 && systemctl reload nginx; exit 2
     fi
     systemctl restart etoro-ute-dashboard.service 2>/dev/null || true     # the unit in git: --secure-cookie --trust-proxy
+    settle "$HOSTNAME_ARG"
     check ;;
   apply) apply "$@" ;;
   check) check ;;
@@ -130,6 +140,7 @@ case "$cmd" in
     REP=$(sed -n 's/^UTE_DASHBOARD_REPLACED=//p' "$HOST_ENV" | tail -1)
     [ -z "$REP" ] || [ ! -f "/etc/nginx/sites-available/$REP" ] || ln -sfn "/etc/nginx/sites-available/$REP" "/etc/nginx/sites-enabled/$REP"
     nginx -t && systemctl reload nginx || die "nginx -t failed after disabling the site"
+    sleep 2                                    # reload is asynchronous: let the new workers take over
     echo "https dashboard disabled${REP:+; $REP re-enabled}"
     disable_host_env ;;
   restore)
@@ -141,6 +152,7 @@ case "$cmd" in
     rm -rf /etc/nginx && cp -a "$TMPD/new/etc/nginx" /etc/nginx
     if nginx -t 2>"$TMPD/nginx-t"; then
       systemctl reload nginx || die "nginx reload failed (configuration valid; see journalctl -u nginx)"
+      sleep 2                                  # reload is asynchronous: let the new workers take over
       echo "restored /etc/nginx from $BK"
       disable_host_env
     else
