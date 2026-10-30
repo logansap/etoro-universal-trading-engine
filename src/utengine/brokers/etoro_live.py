@@ -90,9 +90,12 @@ class EtoroLiveWriter(BrokerWriter):
     def submit_open(self, instrument_id, amount, *, is_buy, leverage, client_ref):
         if not is_buy or leverage != 1:
             raise BrokerError("only x1 long opens are supported")
+        # exactly the body Gold Miner used successfully on this account since 2026-08-27 for x1 longs (SQQQ, SOXS,
+        # QQQ): no `leverage` field at x1 (Gold Miner adds it only above 1); settlementType per instrument (all 11
+        # pilot instruments are CFD-only on this account, eligibility API 2026-10-29/30)
         body = {"action": "open", "transaction": "buy", "instrumentId": int(instrument_id),
                 "settlementType": self.settlement_for(int(instrument_id)), "orderType": "mkt",
-                "amount": round(float(amount), 2), "orderCurrency": "usd", "leverage": 1}
+                "amount": round(float(amount), 2), "orderCurrency": "usd"}
         raw = self._post("/api/v2/trading/execution/orders", body, client_ref)
         if raw.get("orderId") is None:
             raise BrokerAmbiguousError("order accepted without an orderId; look up by referenceId")

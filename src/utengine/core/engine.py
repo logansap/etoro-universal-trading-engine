@@ -94,11 +94,11 @@ class TradingEngine:
         self.id_to_symbol = {iid: s for iid, s in self.instrument_symbols().items()}
         if hasattr(self.broker, "symbols"):
             self.broker.symbols.update(self.id_to_symbol)
-        self.writer = obtain_writer(self.mode, self.broker, authorize=lambda: self._supervised_live_writer(env))
+        self.writer = obtain_writer(self.mode, self.broker, authorize=lambda: self._live_writer(env))
         self.bars = bar_store or self._bar_store()
         self.executor = Executor(self.db, self.broker, self.writer, self.cfg, self.mode, self.clock, sleep)
-        from .supervision import is_supervised
-        if is_supervised(self.mode):
+        from .supervision import guard_active
+        if guard_active(self.mode, self.cfg):
             from . import supervision
             self.executor.supervisor = lambda row, snap: supervision.check(
                 self.db, self.cfg, self.home, row, snap, self.broker.quotes, self.now())
@@ -122,15 +122,16 @@ class TradingEngine:
             return CsvBarStore(d if d.is_absolute() else pathlib.Path(self.cfg["_path"]).parent.parent / d)
         return YahooChartBarStore()
 
-    def _supervised_live_writer(self, env):
-        """The eToro order writer for runtime.mode=supervised_live, constructed ONLY through every pilot gate
-        (security.authorize_supervised). Reads keep using the READ-ONLY key; this writer holds the trading key."""
+    def _live_writer(self, env):
+        """The eToro order writer for runtime.mode=live (authorize_live: the one-time owner activation) or
+        supervised_live (authorize_supervised), constructed ONLY after every gate passed. Reads keep using the
+        READ-ONLY key; this writer holds the trading key."""
         import json as _json
         import uuid as _uuid
         from ..brokers.etoro import BASE, UrllibTransport
         from ..brokers.etoro_live import EtoroLiveWriter
         from .errors import LiveExecutionNotAvailable
-        from .security import TRADING_KEY_ENV, authorize_supervised
+        from .security import TRADING_KEY_ENV, authorize_live, authorize_supervised
         from .supervision import kill_switch_paths
         from .takeover import release_id
         env = os.environ if env is None else env
@@ -144,11 +145,14 @@ class TradingEngine:
             me = _json.loads(body.decode("utf-8")) if body else {}
             return me.get("scopes") if isinstance(me, dict) else None
 
-        auth = authorize_supervised(release_sha=release_id(), config=self.cfg,
-                                    approval_path=self.cfg["pilot"]["approval_file"],
-                                    kill_switch_paths=kill_switch_paths(self.cfg, self.home), env=env,
-                                    now=self.now(), scope_probe=scope_probe)
-        self.db.audit("SUPERVISED_WRITER_AUTHORIZED", {"release_sha": auth.release_sha, "approved_by": auth.approved_by,
+        common = dict(release_sha=release_id(), config=self.cfg,
+                      kill_switch_paths=kill_switch_paths(self.cfg, self.home), env=env, now=self.now(),
+                      scope_probe=scope_probe)
+        if self.mode == "live":
+            auth = authorize_live(activation_path=self.cfg["live_controls"]["activation_file"], **common)
+        else:
+            auth = authorize_supervised(approval_path=self.cfg["live_controls"]["activation_file"], **common)
+        self.db.audit("LIVE_WRITER_AUTHORIZED" if self.mode == "live" else "SUPERVISED_WRITER_AUTHORIZED", {"release_sha": auth.release_sha, "approved_by": auth.approved_by,
                                                        "expires_at": auth.expires_at}, ts=self.nows())
         return EtoroLiveWriter(transport=tr, authorization=auth, api_key=env[TRADING_KEY_ENV[0]],
                                user_key=env[TRADING_KEY_ENV[1]])

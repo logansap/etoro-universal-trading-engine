@@ -29,6 +29,12 @@ def is_supervised(mode: str) -> bool:
     return mode in SUPERVISED_MODES
 
 
+def guard_active(mode: str, cfg: dict) -> bool:
+    """The execution guard (hard limits, send-time quote and spread checks, kill switch) runs in every live mode and
+    in simulation whenever live_controls are configured (so simulation rehearses exactly the autonomous path)."""
+    return mode in SUPERVISED_MODES or mode == "live" or (mode == "simulation" and bool(cfg.get("live_controls")))
+
+
 def intent_digest(row: dict) -> str:
     """The approval is bound to WHAT will be sent: action, instrument, amount / units, position and plan."""
     return sha256_text(canonical_json({k: row.get(k) for k in ("intent_id", "plan_id", "action", "instrument_id",
@@ -36,7 +42,7 @@ def intent_digest(row: dict) -> str:
 
 
 def kill_switch_paths(cfg: dict, home) -> list:
-    p = cfg["pilot"]
+    p = cfg["live_controls"]
     return [pathlib.Path(home) / "KILL_SWITCH"] + ([pathlib.Path(p["kill_switch_file"])] if p.get("kill_switch_file")
                                                     else [])
 
@@ -80,11 +86,11 @@ def approve(db, cfg: dict, intent_id: str, approved_by: str, now: dt.datetime, t
     if row is None or row["status"] != "INTENT_PERSISTED":
         raise EngineError(f"intent {intent_id} is not waiting for approval")
     row = dict(row)
-    p = cfg["pilot"]
+    p = cfg["live_controls"]
     if row["action"] == "OPEN" and (row["amount"] or 0) > p["max_order_usd"] + 1e-9:
         raise EngineError(f"amount {row['amount']:.2f} exceeds pilot.max_order_usd {p['max_order_usd']}: it can "
                           "never be sent; it will be BLOCKED at submit time")
-    ttl = min(float(ttl_minutes or p["approval_ttl_minutes"]), float(p["approval_ttl_minutes"]))
+    ttl = min(float(ttl_minutes or p.get("approval_ttl_minutes", 15.0)), float(p.get("approval_ttl_minutes", 15.0)))
     rec = {"intent_id": intent_id, "digest": intent_digest(row), "approved_by": approved_by,
            "approved_at": now.isoformat(), "expires_at": (now + dt.timedelta(minutes=ttl)).isoformat(),
            "summary": {k: row[k] for k in ("action", "symbol", "amount", "units", "position_id")}}
@@ -136,20 +142,21 @@ def _submitted_in_session(db, session: str) -> int:
 
 def check(db, cfg: dict, home, row: dict, snap, quotes_fn, now: dt.datetime) -> tuple:
     """(None, None) = may be sent now; (HOLD, reason) or (BLOCK, reason)."""
-    p, r = cfg["pilot"], cfg["risk"]
+    p, r = cfg["live_controls"], cfg["risk"]
     nows = now.isoformat()
     ks = kill_switch_engaged(cfg, home)
     if ks:
         return BLOCK, f"kill switch engaged ({ks})"
-    a = db.get(f"approval:{row['intent_id']}")
-    if not a:
-        return HOLD, "awaiting human approval"
-    if a.get("consumed_at"):
-        return BLOCK, "approval already used (an intent is never sent twice)"
-    if a["digest"] != intent_digest(row):
-        return BLOCK, "approval does not match this intent"
-    if dt.datetime.fromisoformat(a["expires_at"]) <= now:
-        return HOLD, "approval expired: approve again"
+    if is_supervised(cfg["runtime"]["mode"]):            # per-order approval: supervised modes only
+        a = db.get(f"approval:{row['intent_id']}")
+        if not a:
+            return HOLD, "awaiting human approval"
+        if a.get("consumed_at"):
+            return BLOCK, "approval already used (an intent is never sent twice)"
+        if a["digest"] != intent_digest(row):
+            return BLOCK, "approval does not match this intent"
+        if dt.datetime.fromisoformat(a["expires_at"]) <= now:
+            return HOLD, "approval expired: approve again"
     session = now.date().isoformat()
     if _submitted_in_session(db, session) >= p["max_orders_per_session"]:
         return HOLD, f"pilot.max_orders_per_session {p['max_orders_per_session']} reached"

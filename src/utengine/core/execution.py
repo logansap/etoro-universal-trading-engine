@@ -93,8 +93,9 @@ class Executor:
             out["status"] = "HALTED_PHASE1"
             return out
         p2 = [l for l in legs if l.phase == 2]
-        if "AWAITING_APPROVAL" in out["phase1"]:
-            out["status"] = "AWAITING_APPROVAL"          # sell-then-buy: no open before every close is sent
+        held1 = [s for s in out["phase1"] if s in ("AWAITING_APPROVAL", "HELD")]
+        if held1:
+            out["status"] = held1[0]                     # sell-then-buy: no open before every close is sent
             return out
         if p2 and "BLOCKED" in out["phase1"]:
             out["status"] = "PHASE1_BLOCKED"
@@ -128,8 +129,9 @@ class Executor:
                 halts.raise_halt(self.db, "UNRESOLVED_ORDER", "ALL", f"plan {plan_id}: an open is unresolved",
                                  self.now())
                 out["status"] = "HALTED_PHASE2"
-        if out["status"] == "DONE" and "AWAITING_APPROVAL" in out["phase2"]:
-            out["status"] = "AWAITING_APPROVAL"
+        held2 = [s for s in out["phase2"] if s in ("AWAITING_APPROVAL", "HELD")]
+        if out["status"] == "DONE" and held2:
+            out["status"] = "AWAITING_APPROVAL" if "AWAITING_APPROVAL" in held2 else "HELD"
         if out["status"] == "DONE" and "REJECTED" in out["phase1"] + out["phase2"]:
             out["status"] = "DONE_WITH_REJECTIONS"
             self.db.alert("WARNING", "ORDER_REJECTED", f"plan {plan_id}: broker rejected a leg (not retried)",
@@ -166,7 +168,7 @@ class Executor:
                 if self.db.get(f"held:{iid}") != why:          # audited once per distinct reason, not every cycle
                     self.db.put(f"held:{iid}", why)
                     self.db.audit("ORDER_HELD", {"intent_id": iid, "reason": why}, ts=self.now())
-                return "AWAITING_APPROVAL"
+                return "AWAITING_APPROVAL" if "approval" in why else "HELD"
         if row["action"] != "OPEN":
             queued = [o.order_id for o in snap.pending_orders
                       if o.kind == "close" and str(row["position_id"]) in o.position_ids]
@@ -178,7 +180,7 @@ class Executor:
                    pre_submit=pre)
         if self.supervisor is not None:
             from .supervision import consume
-            consume(self.db, iid, self.now())             # an approval sends at most one request, ever
+            consume(self.db, iid, self.now())             # supervised: an approval sends at most one request, ever
         try:
             if row["action"] == "OPEN":
                 res = self.writer.submit_open(row["instrument_id"], row["amount"], is_buy=True, leverage=1,

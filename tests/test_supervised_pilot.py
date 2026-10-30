@@ -24,7 +24,7 @@ ONE_SLEEVE = {"mode": "multi_strategy", "funding_policy": "proportional", "rebal
 def pilot_cfg(tmp_path, **over):
     p = {"max_order_usd": 1500.0, "max_gross_usd": 2000.0, "max_orders_per_session": 12, "daily_loss_stop_usd": 200.0,
          "cumulative_loss_stop_usd": 400.0, "approval_ttl_minutes": 15.0,
-         "approval_file": str(tmp_path / "pilot-approval.json"),
+         "activation_file": str(tmp_path / "pilot-approval.json"),
          "forbidden_hashes_file": str(tmp_path / "forbidden.sha256")}
     p.update(over)
     return p
@@ -34,7 +34,7 @@ def supervised_env(tmp_path, bar_store=None, risk=None, **over):
     cfg = write_engine_yaml(tmp_path / "config" / "engine.yaml", portfolio=ONE_SLEEVE, initial=A, **(risk or {}))
     raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
     raw["runtime"]["mode"] = "supervised_simulation"
-    raw["pilot"] = pilot_cfg(tmp_path, **over)
+    raw["live_controls"] = pilot_cfg(tmp_path, **over)
     cfg.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
     env = Env(tmp_path, cfg_path=cfg, bar_store=bar_store)
     env.engine()
@@ -266,7 +266,7 @@ def _approval(tmp_path, cfg, release="r1", **over):
 
 
 def _live_cfg(tmp_path):
-    cfg = {"runtime": {"mode": "supervised_live"}, "_fingerprint": "fp", "pilot": pilot_cfg(tmp_path),
+    cfg = {"runtime": {"mode": "supervised_live"}, "_fingerprint": "fp", "live_controls": pilot_cfg(tmp_path),
            "broker": {"credentials_env": {"api_key": "RO_API", "user_key": "RO_USER"}}}
     (tmp_path / "forbidden.sha256").write_text(key_hash("gold-miner-user-key") + "\n", encoding="utf-8")
     return cfg
@@ -320,8 +320,9 @@ def test_authorize_supervised_refusals(tmp_path, case, match):
                              kill_switch_paths=kill, env=env, now=NOW, scope_probe=probe)
 
 
-def test_autonomous_live_stays_refused():
-    assert LIVE_RELEASE_ENABLED is False and SUPERVISED_PILOT_RELEASE is True
+def test_live_writers_need_their_authorization_closure():
+    """Autonomous-live release: both gates are open in code, but no writer exists without its authorize closure."""
+    assert LIVE_RELEASE_ENABLED is True and SUPERVISED_PILOT_RELEASE is True
     with pytest.raises(LiveExecutionNotAvailable):
         obtain_writer("live", object())
     with pytest.raises(LiveExecutionNotAvailable):
@@ -377,7 +378,7 @@ def test_pilot_approval_template_binds_release_and_config(tmp_path, capsys):
     raw = yaml.safe_load(cfgp.read_text(encoding="utf-8"))
     raw["runtime"]["mode"] = "supervised_live"
     raw["broker"]["name"], raw["broker"]["access"] = "etoro", "live_read_only"
-    raw["pilot"] = pilot_cfg(tmp_path)
+    raw["live_controls"] = pilot_cfg(tmp_path)
     cfgp.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
     assert main(["--config", str(cfgp), "--home", str(tmp_path / "h"), "pilot-approval-template"]) == 0
     t = json.loads(capsys.readouterr().out)

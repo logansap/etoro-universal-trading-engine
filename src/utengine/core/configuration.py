@@ -122,16 +122,28 @@ def D(required=True, **schema) -> F:
 
 # ----------------------------------------------------------------------------- engine.yaml schema
 def _mode_check(v):
-    if v == "live":
+    from .security import LIVE_RELEASE_ENABLED, SUPERVISED_PILOT_RELEASE
+    if v == "live" and not LIVE_RELEASE_ENABLED:
         raise LiveExecutionNotAvailable(
-            "runtime.mode=live is refused: autonomous live order submission can never be enabled by a configuration "
-            "file (docs/RELEASE_READINESS.md, 'Future activation'). The pilot release offers supervised_live only.")
-    from .security import SUPERVISED_PILOT_RELEASE
-    ok = ("simulation", "shadow") + (("supervised_simulation", "supervised_live") if SUPERVISED_PILOT_RELEASE else ())
+            "runtime.mode=live is refused: this release has no autonomous live writer (code constant "
+            "LIVE_RELEASE_ENABLED = False); a configuration file can never enable it.")
+    ok = (("simulation", "shadow") + (("supervised_simulation", "supervised_live") if SUPERVISED_PILOT_RELEASE else ())
+          + (("live",) if LIVE_RELEASE_ENABLED else ()))
     return None if v in ok else f"{v!r} not allowed; choices: {list(ok)}"
 
 
+def _strategy_mode_check(v):
+    """A STRATEGY file can never request live execution: only the engine's one-time activation can (authorize_live)."""
+    if v == "live":
+        raise LiveExecutionNotAvailable("a strategy YAML cannot request live execution (execution.mode=live refused); "
+                                        "live is enabled only by the owner's engine activation")
+    return None if v in ("simulation", "shadow") else f"{v!r} not allowed; choices: ['simulation', 'shadow']"
+
+
 def _live_flag_check(v):
+    from .security import LIVE_RELEASE_ENABLED
+    if v is True and LIVE_RELEASE_ENABLED:
+        return None                     # the autonomous-live release: valid only together with runtime.mode=live
     if v is not False:
         raise LiveExecutionNotAvailable(
             "security.live_execution_enabled must be false. Setting it true does not enable anything; it is "
@@ -224,14 +236,14 @@ ENGINE_SCHEMA = D(
               external_flow_allocation=F("str", choices=("proportional",)),
               preserve_strategy_cash=F("bool", choices=(True,))),
     # full-account takeover preview / state machine (docs/ACCOUNT_TAKEOVER_PREVIEW.md); absent = defaults
-    pilot=D(required=False,                 # supervised pilot limits (pilot release; docs/LIVE_PILOT_DESIGN.md)
+    live_controls=D(required=False,         # hard limits for live and supervised execution (docs/AUTONOMOUS_LIVE.md)
             max_order_usd=F("float", lo=10.0, hi=100000.0),
             max_gross_usd=F("float", lo=10.0, hi=1000000.0),
             max_orders_per_session=F("int", lo=1, hi=100),
             daily_loss_stop_usd=F("float", lo=1.0, hi=1000000.0),
             cumulative_loss_stop_usd=F("float", lo=1.0, hi=1000000.0),
-            approval_ttl_minutes=F("float", lo=1.0, hi=60.0),
-            approval_file=F("str"),
+            approval_ttl_minutes=F("float", lo=1.0, hi=60.0, required=False),   # supervised modes only
+            activation_file=F("str"),
             forbidden_hashes_file=F("str"),
             kill_switch_file=F("str", required=False),
             ),
@@ -285,7 +297,7 @@ STRATEGY_SCHEMA = D(
     rebalancing=D(min_order_usd=F("float", lo=10.0, hi=1000.0), min_order_pct_nav=F("float", lo=0.0, hi=0.05),
                   liquidate_non_targets=F("bool", choices=(True,))),
     risk=D(max_gross_exposure=F("float", lo=0.0, hi=1.0), max_instrument_weight=F("float", lo=0.0, hi=1.0)),
-    execution=D(mode=F("str", check=_mode_check), order_type=F("str", choices=("market",)),
+    execution=D(mode=F("str", check=_strategy_mode_check), order_type=F("str", choices=("market",)),
                 sequencing=F("str", choices=("sell_then_buy",))),
     logging=D(level=F("str", choices=("DEBUG", "INFO", "WARNING")),
               alerts=F("list", item=F("str", choices=("discrepancy", "halt", "missed_cycle", "unknown_order",
@@ -340,12 +352,17 @@ def load_engine_config(path: str | pathlib.Path) -> dict:
         raise ConfigError("runtime.mode=supervised_simulation requires broker.name=simulated")
     if mode == "supervised_live" and b["name"] != "etoro":
         raise ConfigError("runtime.mode=supervised_live requires broker.name=etoro (reads stay on the read-only key)")
-    if mode in ("supervised_simulation", "supervised_live"):
-        if not cfg.get("pilot"):
-            raise ConfigError(f"runtime.mode={mode} requires a pilot section (hard limits)")
+    if mode == "live" and b["name"] != "etoro":
+        raise ConfigError("runtime.mode=live requires broker.name=etoro (reads stay on the read-only key)")
+    if (mode == "live") != bool(cfg["security"]["live_execution_enabled"]):
+        raise ConfigError("runtime.mode=live and security.live_execution_enabled=true must be set together (two "
+                          "independent switches; neither alone does anything)")
+    if mode in ("supervised_simulation", "supervised_live", "live"):
+        if not cfg.get("live_controls"):
+            raise ConfigError(f"runtime.mode={mode} requires a live_controls section (hard limits)")
         if not (cfg.get("portfolio") and cfg["portfolio"]["mode"] == "multi_strategy"):
             raise ConfigError(f"runtime.mode={mode} requires portfolio.mode multi_strategy (one 100% sleeve)")
-        if cfg["pilot"]["max_order_usd"] > cfg["pilot"]["max_gross_usd"]:
+        if cfg["live_controls"]["max_order_usd"] > cfg["live_controls"]["max_gross_usd"]:
             raise ConfigError("pilot.max_order_usd must not exceed pilot.max_gross_usd")
     pf = cfg.get("portfolio")
     if pf and pf["mode"] == "multi_strategy":

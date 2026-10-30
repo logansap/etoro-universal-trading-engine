@@ -70,39 +70,30 @@ def assert_gm_untouched(rig):
 
 # ----------------------------------------------------------------------------------------------- authorization
 def test_live_writer_cannot_target_production_without_authorization():
-    """INVARIANT: the production writer requires a LiveAuthorization; none can be created in this release."""
+    """INVARIANT: the production writer requires a LiveAuthorization, which only authorize_live / authorize_supervised
+    can create; a non-live configuration is refused before anything else is looked at."""
     with pytest.raises(LiveExecutionNotAvailable):
         EtoroLiveWriter(transport=lambda *a: (200, b"{}"), base=PRODUCTION_BASE)
     with pytest.raises(LiveExecutionNotAvailable):
         security.LiveAuthorization("x", "y", "z", "w")
-    with pytest.raises(LiveExecutionNotAvailable, match="code constant"):
-        security.authorize_live(release_sha="x", config={}, approval_path="nope", kill_switch_path="nope",
-                                env={}, now=NOW)
+    with pytest.raises(LiveExecutionNotAvailable, match="not a live configuration"):
+        security.authorize_live(release_sha="x", config={"runtime": {"mode": "shadow"}, "security": {}},
+                                activation_path="nope", kill_switch_paths=[], env={}, now=NOW,
+                                scope_probe=lambda a, u: [])
 
 
-def test_opening_the_code_gate_alone_is_not_enough(tmp_path, monkeypatch):
-    """INVARIANT: even with LIVE_RELEASE_ENABLED patched True, authorization still needs a live configuration (which
-    the schema refuses), an owner approval bound to release+config, a separate write credential and no kill switch."""
-    monkeypatch.setattr(security, "LIVE_RELEASE_ENABLED", True)
+def test_opening_the_code_gate_alone_is_not_enough(tmp_path):
+    """INVARIANT (autonomous-live release): the code gate is open, yet a shadow configuration, a missing activation
+    file and a missing trading key are each refused (the full gate matrix is in tests/test_autonomous_live.py)."""
     cfg = load_engine_config(write_engine_yaml(tmp_path / "e.yaml", mode="shadow"))
     with pytest.raises(LiveExecutionNotAvailable, match="not a live configuration"):
-        security.authorize_live(release_sha="abc", config=cfg, approval_path=tmp_path / "a.json",
-                                kill_switch_path=tmp_path / "KILL", env={}, now=NOW)
-    live = {**cfg, "runtime": {**cfg["runtime"], "mode": "live"}}
-    with pytest.raises(LiveExecutionNotAvailable, match="approval"):
-        security.authorize_live(release_sha="abc", config=live, approval_path=tmp_path / "a.json",
-                                kill_switch_path=tmp_path / "KILL", env={}, now=NOW)
-    import json
-    (tmp_path / "a.json").write_text(json.dumps({"release_sha": "abc", "config_fingerprint": cfg["_fingerprint"],
-                                                 "approved_by": "owner", "expires_at": "2026-12-31T00:00:00+00:00"}))
-    with pytest.raises(LiveExecutionNotAvailable, match="write credential"):
-        security.authorize_live(release_sha="abc", config=live, approval_path=tmp_path / "a.json",
-                                kill_switch_path=tmp_path / "KILL", env=ENV, now=NOW)
-    (tmp_path / "KILL").write_text("stop")
-    with pytest.raises(LiveExecutionNotAvailable, match="kill switch"):
-        security.authorize_live(release_sha="abc", config=live, approval_path=tmp_path / "a.json",
-                                kill_switch_path=tmp_path / "KILL",
-                                env={"UTE_ETORO_WRITE_API_KEY": "k" * 8, "UTE_ETORO_WRITE_USER_KEY": "u" * 8}, now=NOW)
+        security.authorize_live(release_sha="abc", config=cfg, activation_path=tmp_path / "a.json",
+                                kill_switch_paths=[tmp_path / "KILL"], env={}, now=NOW, scope_probe=lambda a, u: [])
+    live = {**cfg, "runtime": {**cfg["runtime"], "mode": "live"}, "security": {**cfg["security"],
+            "live_execution_enabled": True}, "live_controls": {"forbidden_hashes_file": str(tmp_path / "fb")}}
+    with pytest.raises(LiveExecutionNotAvailable, match="no owner approval file"):
+        security.authorize_live(release_sha="abc", config=live, activation_path=tmp_path / "a.json",
+                                kill_switch_paths=[tmp_path / "KILL"], env={}, now=NOW, scope_probe=lambda a, u: [])
 
 
 def test_writer_allowlist_and_engine_never_gets_it():
@@ -129,7 +120,7 @@ def test_c01_success_documented_request_and_reconciliation(tmp_path):
     iid = rig.db.one("SELECT intent_id FROM intents")["intent_id"]
     assert rid == request_id_for(iid)
     assert body == {"action": "open", "transaction": "buy", "instrumentId": TQQQ, "settlementType": "cfd",
-                    "orderType": "mkt", "amount": 1000.0, "orderCurrency": "usd", "leverage": 1}
+                    "orderType": "mkt", "amount": 1000.0, "orderCurrency": "usd"}
     r = rig.recon()
     assert r.clean, r.issues
     assert r.strategy_equity == pytest.approx(2000.0 - 1000.0 + sum(p.value for p in r.engine_positions))

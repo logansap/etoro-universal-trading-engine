@@ -27,7 +27,7 @@ from .scheduler import Scheduler
 from .strategy_api import StrategyDecision
 from ..strategy_modules import REGISTRY
 
-RESUMABLE = ("PLANNED", "HALTED_PHASE1", "HALTED_PHASE2", "HALTED_RECONCILIATION", "AWAITING_APPROVAL")
+RESUMABLE = ("PLANNED", "HALTED_PHASE1", "HALTED_PHASE2", "HALTED_RECONCILIATION", "AWAITING_APPROVAL", "HELD")
 
 
 def _sleeve_blocked(e, sid: str, drift: dict, for_execution: bool) -> str | None:

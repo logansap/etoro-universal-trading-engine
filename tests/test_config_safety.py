@@ -29,8 +29,10 @@ def test_repository_configs_validate():
 
 
 @pytest.mark.parametrize("mutate,err", [
-    (lambda c: c["runtime"].update(mode="live"), LiveExecutionNotAvailable),
-    (lambda c: c["security"].update(live_execution_enabled=True), LiveExecutionNotAvailable),
+    # AUTONOMOUS-LIVE RELEASE: each switch alone is refused; both together still need live_controls
+    (lambda c: c["runtime"].update(mode="live"), ConfigError),
+    (lambda c: c["security"].update(live_execution_enabled=True), ConfigError),
+    (lambda c: (c["runtime"].update(mode="live"), c["security"].update(live_execution_enabled=True)), ConfigError),
     (lambda c: c["broker"].update(access="live_trading"), ConfigError),
     (lambda c: c["broker"]["credentials_env"].update(api_key="sk-live-" + "0123456789abcdef"), ConfigError),
     (lambda c: c.update(extra_key=1), ConfigError),
@@ -107,8 +109,9 @@ def test_s27_editing_initial_strategy_does_not_switch(tmp_path):
 
 
 def test_live_writer_cannot_be_obtained():
-    """INVARIANT: no code path yields a live writer; the release gate constant is False and 'live' raises."""
-    assert LIVE_RELEASE_ENABLED is False
+    """INVARIANT (autonomous-live release): the code gate is open, but no live writer exists without the activation
+    closure (authorize_live); shadow never has one."""
+    assert LIVE_RELEASE_ENABLED is True
     with pytest.raises(LiveExecutionNotAvailable):
         obtain_writer("live", object())
     assert obtain_writer("shadow", object()) is None
@@ -129,10 +132,10 @@ def test_live_order_code_is_isolated_and_never_constructed():
     assert users == ["engine.py", "etoro_live.py"], users
     eng = (src / "core" / "engine.py").read_text(encoding="utf-8")
     assert eng.count("EtoroLiveWriter(") == 1
-    body = eng[eng.index("def _supervised_live_writer"):eng.index("def instrument_symbols")]
-    assert "EtoroLiveWriter(" in body and body.index("authorize_supervised(release_sha") < body.index(
-        "EtoroLiveWriter(") and "authorization=auth" in body
-    assert eng.count("_supervised_live_writer(") == 2        # its definition and the single obtain_writer closure
+    body = eng[eng.index("def _live_writer"):eng.index("def instrument_symbols")]
+    assert "EtoroLiveWriter(" in body and body.index("auth = authorize_live(") < body.index(
+        "EtoroLiveWriter(") and body.index("auth = authorize_supervised(") < body.index("EtoroLiveWriter(")         and "authorization=auth" in body
+    assert eng.count("_live_writer(") == 2        # its definition and the single obtain_writer closure
 
 
 def test_no_secrets_in_repository():

@@ -33,11 +33,11 @@ def pilot_config(rel, out, csv_dir, home):
     P1 limits of config/engine.pilot.yaml (approval/forbidden files are only used by supervised_live)."""
     config(rel, out, csv_dir, home)
     cfg = yaml.safe_load(pathlib.Path(out).read_text(encoding="utf-8"))
-    pilot = yaml.safe_load((pathlib.Path(rel) / "config" / "engine.pilot.yaml").read_text(encoding="utf-8"))["pilot"]
+    pilot = yaml.safe_load((pathlib.Path(rel) / "config" / "engine.pilot.yaml").read_text(encoding="utf-8"))["live_controls"]
     cfg["engine"]["instance_id"] = "ute-pilot-sim-rehearsal"
     cfg["runtime"]["mode"] = "supervised_simulation"
     cfg["portfolio"]["sleeves"] = [{"strategy": "QC_529_ETORO_RESTRICTED", "weight": 1.0}]
-    cfg["pilot"] = pilot
+    cfg["live_controls"] = pilot
     pathlib.Path(out).write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
 
 

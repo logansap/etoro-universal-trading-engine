@@ -101,13 +101,13 @@ takeover:
   investable_reserve_pct: 0.02
   financing_annual_rate_observed:
     GDX: 0.1005                     # observed on Gold Miner's x5 GDX CFD (2026-08/09)
-pilot:                              # P1 limits (owner proposal 2026-10-30); OPERATIONAL limits, not loss guarantees
+live_controls:                      # P1 limits (owner proposal 2026-10-30); OPERATIONAL limits, not loss guarantees
   max_order_usd: 250.0
   max_gross_usd: 500.0              # engine exposure incl. pending opens, checked when an open would be sent
   max_orders_per_session: 8
   daily_loss_stop_usd: 50.0         # no new exposure for the rest of the session
   cumulative_loss_stop_usd: 100.0   # halt ALL; human decision required
   approval_ttl_minutes: 15
-  approval_file: /etc/etoro-ute/pilot-approval.json
+  activation_file: /etc/etoro-ute/pilot-approval.json
   forbidden_hashes_file: /etc/etoro-ute/forbidden-user-key.sha256
   kill_switch_file: /etc/etoro-ute/KILL_SWITCH
