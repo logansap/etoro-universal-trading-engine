@@ -210,10 +210,19 @@ def execute_portfolio(e, session: dt.date, sids: list, now: dt.datetime, drift: 
 
     res = e.execute_legs(plan_id, pp["legs"], _merged_spec(e, [i["spec"] for i in inputs]), body, now,
                          plan_kind="portfolio", resize_fn=_resizer(e), before_submit=cross)
-    if db.one("SELECT 1 FROM plans WHERE plan_id=?", (plan_id,)):
+    prow = db.one("SELECT status, plan FROM plans WHERE plan_id=?", (plan_id,))
+    if prow:
+        # a capital catch-up is used up only by a plan that executed (or, in shadow, was recorded) with no blocked open
+        # leg; a blocked / halted plan keeps it pending for the sleeve's next execution
+        opens_blocked = [b for b, _why in json.loads(prow["plan"]).get("blocked", []) if b.get("action") == "OPEN"]
+        executed = res.get("status") in ("DONE", "SHADOW") and not opens_blocked
         for inp in inputs:                           # each sleeve is planned at most once per session
             db.put(f"sleeve_planned:{ss}:{inp['sleeve']}", plan_id)
-            sleeves.consume_catch_up(db, inp["sleeve"], plan_id, nows)
+            if executed:
+                sleeves.consume_catch_up(db, inp["sleeve"], plan_id, nows)
+            elif sleeves.catch_up_pending(db, inp["sleeve"]):
+                db.audit("CATCH_UP_KEPT", {"sleeve": inp["sleeve"], "plan_id": plan_id, "plan_status": res.get("status"),
+                                           "blocked_opens": len(opens_blocked)}, ts=nows)
     after = e.reconcile("after_portfolio", e.now())
     return {**out, plan_id: {**res, "after": after.status, "legs": len(pp["legs"]),
                              "crossings": len(pp["crossings"]), "notes": body["notes"]}}

@@ -127,8 +127,8 @@ def mark_posted(db, flow_id: str, policy: str, now: str) -> None:
 
 
 def request_catch_up(db, sleeve: str, reason: str, ref: str, now: str) -> None:
-    """New capital reached `sleeve` through an AUDITED transfer (restructure, pool allocation, operator-classified
-    proceeds of a foreign position). Strategies such as #529 trade only when their signal label changes, so without
+    """New capital reached `sleeve` through an AUDITED transfer: a restructure or a reallocation (approved preview hash),
+    a takeover-pool allocation, or operator-classified proceeds of a foreign position (EXTERNAL_TRADE > 0). Strategies such as #529 trade only when their signal label changes, so without
     this the new cash would sit idle until then. The next execution of this sleeve re-targets the decision's
     standing target weights on the sleeve's equity (logged as CAPITAL_CATCH_UP). Ordinary deposits are NOT included."""
     if sleeve == UNALLOCATED:
@@ -653,4 +653,7 @@ def reallocate(db, preview_hash: str, approved_by: str, val: dict, now: str) -> 
         db.put(f"realloc_preview:{preview_hash}", {**body, "applied": now})
         db.audit("REALLOCATED", {"hash": preview_hash, "amount": amt, "to_weights": body["to_weights"],
                                  "approved_by": approved_by}, ts=now)
+    for s, x in get.items():
+        if x > 0:
+            request_catch_up(db, s, "reallocation", f"realloc:{preview_hash}", now)
     return {"status": "APPLIED", "amount": amt, "weights": body["to_weights"]}

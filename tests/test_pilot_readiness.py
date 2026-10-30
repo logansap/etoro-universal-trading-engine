@@ -163,3 +163,119 @@ def test_pilot_strategy_identity_is_frozen():
     cfg = load_engine_config(ROOT / "config" / "engine.single529.yaml")
     assert cfg["portfolio"]["sleeves"] == [{"strategy": A, "weight": 1.0}] and cfg["runtime"]["mode"] == "shadow"
     assert cfg["security"]["live_execution_enabled"] is False
+
+
+# ------------------------------------------------------------------------------------- capital catch-up semantics
+def hold_env(tmp_path, extra=None):
+    """Two sessions decided (10-26 never executed, 10-27 forced to HOLD): the state paper #529 reports as HOLD."""
+    env = multi_env(tmp_path, bar_store=extended_store(extra or {D2: 1.0}))
+    e = env.engine()
+    env.clock.set(DECIDE_AT)
+    e.cycle()
+    env.clock.set(NEXT_DECIDE)
+    e.cycle()
+    for sid in (A, B):
+        row = e.db.one("SELECT decision FROM decisions WHERE strategy_id=? AND session=?", (sid, D2.isoformat()))
+        d = json.loads(row["decision"])
+        d["rebalance"] = False
+        e.db.x("UPDATE decisions SET decision=? WHERE strategy_id=? AND session=?", (json.dumps(d), sid, D2.isoformat()))
+    return env, e
+
+
+def opens(env):
+    return [s for s in env.broker.s["submissions"] if s["kind"] == "open"]
+
+
+def audits(e, kind):
+    return e.db.one("SELECT COUNT(*) c FROM audit_log WHERE kind=?", (kind,))["c"]
+
+
+def test_catch_up_is_idempotent_across_restarts(tmp_path):
+    """INVARIANT: a catch-up survives restarts as ONE pending request (restarts and repeated cycles never add a
+    second one), is used by exactly one executed plan, and after that a HOLD holds again (no repeated buying)."""
+    env, e = hold_env(tmp_path)
+    to_restricted_only(e)
+    for _ in range(2):
+        e = env.engine()                                            # restart: state comes from the database only
+        e.reconcile("restart", e.now())
+    assert audits(e, "CATCH_UP_REQUESTED") == 1 and sleeves.catch_up_pending(e.db, A)
+    env.clock.set(NEXT_EXECUTE)
+    e.cycle()
+    n = len(opens(env))
+    assert n > 0 and audits(e, "CATCH_UP_CONSUMED") == 1
+    e = env.engine()
+    env.clock.set(NEXT_EXECUTE + dt.timedelta(minutes=10))
+    e.cycle()                                                       # same session, after a restart: nothing new
+    assert len(opens(env)) == n and audits(e, "CATCH_UP_CONSUMED") == 1 and sleeves.catch_up_pending(e.db, A) is None
+
+
+def test_catch_up_only_for_audited_transfers(tmp_path):
+    """INVARIANT: eligible = restructure, reallocation, pool allocation, operator-classified positive EXTERNAL_TRADE.
+    A deposit (even an evidenced one) or a foreign position opening (negative EXTERNAL_TRADE) requests nothing."""
+    env = multi_env(tmp_path, capital=FULL_CAPITAL, broker_kwargs={"cash_tx_capability": True})
+    e = env.engine()
+    env.broker.deposit(300.0, evidence="evidenced deposit")
+    e.reconcile("t", e.now())
+    env.broker.external_open_position(IDS["GDX"], 100.0, is_buy=False, leverage=5, open_rate=81.0)
+    e.reconcile("t", e.now())
+    assert audits(e, "CATCH_UP_REQUESTED") == 0
+    clear_all(e)
+    for p in [x for x in e.db.q("SELECT position_id FROM ownership WHERE owner='EXTERNAL_UNACK'")]:
+        acknowledge_external(e.db, p["position_id"], "owner", "test", e.nows())
+    clear_all(e)
+    pv = sleeves.reallocation_preview(e.db, {A: 0.6, B: 0.4}, val(e), e.nows())
+    sleeves.reallocate(e.db, pv["preview_hash"], "owner", val(e), e.nows())
+    assert sleeves.catch_up_pending(e.db, A) and sleeves.catch_up_pending(e.db, B) is None
+
+
+def test_catch_up_stays_pending_when_the_plan_is_blocked(tmp_path):
+    """INVARIANT: a plan that executes nothing (here a NEW_EXPOSURE halt blocks every open) does not use up the
+    catch-up; the next execution after the halt is cleared invests the cash."""
+    env, e = hold_env(tmp_path, {D2: 1.0, dt.date(2026, 10, 28): 1.0})
+    to_restricted_only(e)
+    hid = halts.raise_halt(e.db, "EMERGENCY_HALT", "NEW_EXPOSURE", "operator test", e.nows())
+    env.clock.set(NEXT_EXECUTE)
+    e.cycle()
+    assert opens(env) == [] and sleeves.catch_up_pending(e.db, A) and audits(e, "CATCH_UP_KEPT") == 1
+    halts.clear(e.db, hid, "ops", "test over", e.nows())
+    env.clock.set(dt.datetime(2026, 10, 28, 20, 55, tzinfo=dt.timezone.utc))
+    e.cycle()                                                       # 10-28 decision
+    row = e.db.one("SELECT decision FROM decisions WHERE strategy_id=? AND session='2026-10-28'", (A,))
+    d = json.loads(row["decision"])
+    d["rebalance"] = False                                         # still HOLD
+    e.db.x("UPDATE decisions SET decision=? WHERE strategy_id=? AND session='2026-10-28'", (json.dumps(d), A))
+    env.clock.set(dt.datetime(2026, 10, 29, 13, 35, tzinfo=dt.timezone.utc))
+    e.cycle()
+    assert opens(env) and sleeves.catch_up_pending(e.db, A) is None
+
+
+def test_friday_hold_restructure_over_the_weekend_executes_monday_open(tmp_path):
+    """BEHAVIOUR (owner question): the Friday 16:50 ET decision is a HOLD; the restructure happens on Saturday; the
+    first eligible execution is Monday's open (09:30 ET + delay). Nothing trades before it (weekend, Monday
+    pre-open); at Monday's open the catch-up re-targets FRIDAY's standing weights with Monday's broker quotes."""
+    fri, mon = dt.date(2026, 10, 30), dt.date(2026, 11, 2)
+    env = multi_env(tmp_path, bar_store=extended_store({D2: 1.0, dt.date(2026, 10, 28): 1.0,
+                                                        dt.date(2026, 10, 29): 1.0, fri: 1.0}))
+    e = env.engine()
+    env.clock.set(DECIDE_AT)
+    e.cycle()                                                       # 10-26 decision (never executed)
+    env.clock.set(dt.datetime(2026, 10, 30, 20, 55, tzinfo=dt.timezone.utc))
+    e.cycle()                                                       # Friday 16:55 ET decision
+    row = e.db.one("SELECT decision FROM decisions WHERE strategy_id=? AND session=?", (A, fri.isoformat()))
+    d = json.loads(row["decision"])
+    if d["rebalance"]:
+        d["rebalance"] = False
+        e.db.x("UPDATE decisions SET decision=? WHERE strategy_id=? AND session=?", (json.dumps(d), A, fri.isoformat()))
+    env.clock.set(dt.datetime(2026, 10, 31, 12, 0, tzinfo=dt.timezone.utc))
+    to_restricted_only(e)                                           # Saturday
+    e.cycle()
+    env.clock.set(dt.datetime(2026, 11, 2, 13, 40, tzinfo=dt.timezone.utc))   # Monday 08:40 EST: market closed
+    e.cycle()
+    assert opens(env) == [] and sleeves.catch_up_pending(e.db, A)
+    env.clock.set(dt.datetime(2026, 11, 2, 14, 35, tzinfo=dt.timezone.utc))   # Monday 09:35 EST: open + delay
+    x = e.cycle()["execution"]
+    assert fri.isoformat() in x, x
+    plan = next(v for k, v in x[fri.isoformat()].items() if k.startswith("P"))
+    assert any("CAPITAL_CATCH_UP" in n for n in x[fri.isoformat()]["notes"] + plan["notes"])
+    assert opens(env) and sleeves.catch_up_pending(e.db, A) is None
+    assert mon.weekday() == 0
