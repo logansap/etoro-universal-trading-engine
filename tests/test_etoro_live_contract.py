@@ -271,3 +271,28 @@ def test_c10_lost_close_response_is_a_live_blocker(tmp_path):
     r = rig.recon()
     assert not r.clean and "CASH_DISCREPANCY" in rig.kinds()
     assert len(rig.fake.posts("market-close-orders")) == 1
+
+
+def test_c11_autonomous_guard_through_the_real_writer(tmp_path):
+    """INVARIANT (autonomous release): with the live guard installed on the real EtoroLiveWriter / EtoroReadOnly
+    (fake eToro HTTP), an in-cap open is sent with the body Gold Miner proved (no leverage field) and filled; an
+    over-cap open never produces an HTTP request; a kill switch blocks the next one."""
+    from utengine.core import supervision
+    rig = Rig(tmp_path)
+    cfg = {**rig.cfg, "runtime": {**rig.cfg["runtime"], "mode": "live"},
+           "live_controls": {"max_order_usd": 500.0, "max_gross_usd": 900.0, "max_orders_per_session": 10,
+                             "daily_loss_stop_usd": 500.0, "cumulative_loss_stop_usd": 900.0,
+                             "activation_file": str(tmp_path / "a.json"), "forbidden_hashes_file": str(tmp_path / "f")}}
+    rig.ex.supervisor = lambda row, snap: supervision.check(rig.db, cfg, tmp_path, row, snap, rig.reader.quotes,
+                                                            rig.clock())
+    out = rig.run("P1", [open_leg(0, TQQQ, "TQQQ", 400.0), open_leg(1, SQQQ, "SQQQ", 600.0)])
+    posts = rig.fake.posts()
+    assert len(posts) == 1 and posts[0][3] == {"action": "open", "transaction": "buy", "instrumentId": TQQQ,
+                                               "settlementType": "cfd", "orderType": "mkt", "amount": 400.0,
+                                               "orderCurrency": "usd"}
+    st = {r["symbol"]: r["status"] for r in rig.db.q("SELECT symbol, status FROM intents")}
+    assert st["TQQQ"] == "FILLED" and st["SQQQ"] == "BLOCKED"
+    (tmp_path / "KILL_SWITCH").write_text("drill")
+    rig.run("P2", [open_leg(0, TLT, "TLT", 100.0)])
+    assert len(rig.fake.posts()) == 1
+    assert_gm_untouched(rig)

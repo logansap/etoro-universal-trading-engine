@@ -41,6 +41,19 @@ def pilot_config(rel, out, csv_dir, home):
     pathlib.Path(out).write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
 
 
+def live_config(rel, out, csv_dir, home):
+    """AUTONOMOUS rehearsal (autonomous-live release only): simulated broker, one 100% QC_529_ETORO_RESTRICTED sleeve,
+    the live_controls of config/engine.live.yaml -> exactly the autonomous execution path, no approvals."""
+    config(rel, out, csv_dir, home)
+    cfg = yaml.safe_load(pathlib.Path(out).read_text(encoding="utf-8"))
+    live = yaml.safe_load((pathlib.Path(rel) / "config" / "engine.live.yaml").read_text(encoding="utf-8"))
+    cfg["engine"]["instance_id"] = "ute-live-sim-rehearsal"
+    cfg["portfolio"]["sleeves"] = [{"strategy": "QC_529_ETORO_RESTRICTED", "weight": 1.0}]
+    cfg["live_controls"] = live["live_controls"]
+    cfg["risk"]["max_spread_bp"] = live["risk"]["max_spread_bp"]
+    pathlib.Path(out).write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+
+
 def fixtures(rel, out):
     src = pathlib.Path(rel) / "tests" / "fixtures" / "snapshots" / "930795e32531bedc"
     dst = pathlib.Path(out)
@@ -115,4 +128,5 @@ def check(home):
 if __name__ == "__main__":
     cmd, *args = sys.argv[1:]
     {"config": config, "fixtures": fixtures, "fault": fault, "check": check,
-     "force-decision": force_decision, "pilot-config": pilot_config}[cmd](*args)
+     "force-decision": force_decision, "pilot-config": pilot_config,
+     "live-config": live_config}[cmd](*args)

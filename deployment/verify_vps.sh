@@ -15,11 +15,12 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --expect-commit) EXPECT=${2:-}; shift 2;;
     --probe) PROBE=1; shift;;
-    --pilot) PILOT=1; shift;;     # the owner switched this host to the SUPERVISED live pilot (pilot release only)
-    *) echo "usage: verify_vps.sh [--expect-commit <sha>] [--probe] [--pilot]"; exit 2;;
+    --pilot) PILOT=1; shift;;     # the owner switched this host to the SUPERVISED live pilot
+    --live) PILOT=2; shift;;      # the owner ACTIVATED autonomous live trading (autonomous-live release only)
+    *) echo "usage: verify_vps.sh [--expect-commit <sha>] [--probe] [--pilot | --live]"; exit 2;;
   esac
 done
-MODE_EXPECTED=shadow; [ $PILOT -eq 1 ] && MODE_EXPECTED=supervised_live
+MODE_EXPECTED=shadow; [ $PILOT -eq 1 ] && MODE_EXPECTED=supervised_live; [ $PILOT -eq 2 ] && MODE_EXPECTED=live
 [ "$(id -u)" -eq 0 ] || { echo "run as root (read-only checks need to read /proc and run as the service user)"; exit 2; }
 F=0
 pass() { echo "PASS  $*"; }
@@ -50,13 +51,14 @@ fi
 
 echo "## configuration"
 check "mode $MODE_EXPECTED" "grep -q '^  mode: $MODE_EXPECTED' $UTE_CONFIG"
-if [ $PILOT -eq 1 ]; then
+if [ $PILOT -ge 1 ]; then
   TC=$UTE_ETC/trading-credentials.env FB=$UTE_ETC/forbidden-user-key.sha256 AP=$UTE_ETC/pilot-approval.json
+  [ $PILOT -eq 2 ] && AP=$UTE_ETC/live-activation.json
   names() { sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$1" | sort | tr '\n' ' '; }
   hk() { sed -n "s/^$2=//p" "$1" | tail -1 | tr -d "\"'\r" | tr -d '\n' | sha256sum | cut -c1-64; }
   if [ -f "$TC" ] && [ "$(stat -c '%a %U:%G' "$TC")" = "640 root:$UTE_USER" ] \
      && [ "$(names "$TC")" = "UTE_ETORO_TRADING_API_KEY UTE_ETORO_TRADING_USER_KEY " ] && ! grep -q $'\r' "$TC"; then
-    pass "pilot: trading credential file root:$UTE_USER 640, exactly UTE_ETORO_TRADING_API_KEY/USER_KEY, LF"
+    pass "live: trading credential file root:$UTE_USER 640, exactly UTE_ETORO_TRADING_API_KEY/USER_KEY, LF"
   else fail "pilot: trading credential file $TC missing, wrong mode, wrong names or CRLF"; fi
   if [ -s "$FB" ]; then pass "pilot: forbidden-key file present (old Gold Miner key hash)"
   else fail "pilot: forbidden-key file $FB missing or empty"; fi
@@ -64,8 +66,8 @@ if [ $PILOT -eq 1 ]; then
      && [ "$(hk "$TC" UTE_ETORO_TRADING_USER_KEY)" != "$(hk "$UTE_CRED" UTE_ETORO_READONLY_USER_KEY)" ]; then
     pass "pilot: trading user key is not a forbidden key and not the read-only key (compared as hashes)"
   else fail "pilot: trading user key is FORBIDDEN, equals the read-only key, or cannot be checked"; fi
-  if [ -f "$AP" ] && python3 -c "import json,sys,datetime as d; a=json.load(open('$AP')); sys.exit(0 if d.datetime.fromisoformat(a['expires_at'])>d.datetime.now(d.timezone.utc) else 1)" 2>/dev/null; then
-    pass "pilot: owner approval file present and not expired"
+  if [ -f "$AP" ] && python3 -c "import json,sys,datetime as d; a=json.load(open('$AP')); e=a.get('expires_at'); sys.exit(0 if e is None or d.datetime.fromisoformat(e)>d.datetime.now(d.timezone.utc) else 1)" 2>/dev/null; then
+    pass "pilot: owner approval / activation file present and not expired"
   else fail "pilot: owner approval file $AP missing or expired"; fi
   if [ -e "$UTE_ETC/KILL_SWITCH" ] || [ -e "$UTE_DATA/KILL_SWITCH" ]; then warn "pilot: KILL SWITCH ENGAGED (no order can be sent)"
   else info "pilot: kill switch not engaged"; fi
@@ -99,8 +101,8 @@ fi
 echo "## engine state"
 ute_te status > "$TMP/status.json" 2>&1 || true
 check "engine reports $MODE_EXPECTED mode" "grep -q '\"mode\": \"$MODE_EXPECTED\"' $TMP/status.json"
-if [ $PILOT -eq 1 ]; then
-  check "pilot: engine holds the supervised write capability" "grep -q '\"write_capability\": true' $TMP/status.json"
+if [ $PILOT -ge 1 ]; then
+  check "live: engine holds the write capability" "grep -q '\"write_capability\": true' $TMP/status.json"
 else
   check "engine holds no write capability" "grep -q '\"write_capability\": false' $TMP/status.json"
 fi

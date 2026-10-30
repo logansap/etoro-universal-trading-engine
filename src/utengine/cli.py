@@ -106,13 +106,16 @@ def cmd_strategy(a):
     raise SystemExit(2)
 
 
-def _pilot_db(a):
-    """Operator pilot commands touch only the configuration and the database: no broker, no trading credential."""
-    from .core.supervision import is_supervised
+def _pilot_db(a, live_ok: bool = False):
+    """Operator commands that touch only the configuration and the database: no broker, no trading credential.
+    Approvals exist only in supervised modes; the kill switch works in every mode with live_controls."""
+    from .core.supervision import guard_active, is_supervised
     from .persistence.db import DB
     cfg = load_engine_config(a.config)
-    if not is_supervised(cfg["runtime"]["mode"]):
-        raise SystemExit("pilot commands need runtime.mode supervised_simulation or supervised_live")
+    mode = cfg["runtime"]["mode"]
+    if not (is_supervised(mode) or (live_ok and guard_active(mode, cfg))):
+        raise SystemExit("this command needs runtime.mode supervised_* (approvals) or, for the kill switch, any mode "
+                         "with live_controls (live, supervised_*, simulation)")
     return cfg, DB(pathlib.Path(a.home) / "engine.sqlite"), pathlib.Path(a.home)
 
 
@@ -152,9 +155,21 @@ def cmd_pilot_approval_template(a):
     return 0
 
 
+def cmd_live_activation_template(a):
+    from .core.security import LIVE_ACTIVATION_PHRASE
+    from .core.takeover import release_id
+    cfg = load_engine_config(a.config)
+    if cfg["runtime"]["mode"] != "live":
+        raise SystemExit("the activation binds a live configuration: install it first, then run this")
+    _print({"kind": "AUTONOMOUS_LIVE", "phrase": LIVE_ACTIVATION_PHRASE, "release_sha": release_id(),
+            "config_fingerprint": cfg["_fingerprint"], "approved_by": "<owner name>",
+            "expires_at": None})
+    return 0
+
+
 def cmd_kill_switch(a):
     from .core import supervision
-    cfg, db, home = _pilot_db(a)
+    cfg, db, home = _pilot_db(a, live_ok=True)
     p = supervision.engage_kill_switch(cfg, home, a.operator, a.reason, dt.datetime.now(dt.timezone.utc).isoformat(), db)
     print(f"KILL SWITCH ENGAGED: {p} (no order can be sent; remove the file and clear the halt to resume)")
     return 0
@@ -601,6 +616,10 @@ def build_parser():
     pt = sub.add_parser("pilot-approval-template", help="print the owner approval file skeleton for THIS release and "
                                                          "configuration (the owner fills approved_by and expires_at)")
     pt.set_defaults(fn=cmd_pilot_approval_template)
+    lt = sub.add_parser("live-activation-template", help="print the ONE-TIME autonomous-live activation skeleton for "
+                                                         "THIS release and configuration (expires_at null = until "
+                                                         "revoked; the owner may set an ISO date instead)")
+    lt.set_defaults(fn=cmd_live_activation_template)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     hp = sub.add_parser("health")
     hp.add_argument("--notify", action="store_true", help="alert on a stale heartbeat and flush notifications")

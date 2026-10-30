@@ -175,22 +175,75 @@ def test_crash_after_broker_accept_recovers_on_restart_without_duplicates(tmp_pa
     assert len(ids) == len(set(ids)) and "UNKNOWN" not in statuses(env.e)
 
 
-def test_missed_execution_window_is_skipped_never_executed_late(tmp_path):
-    """INVARIANT: if the engine is down for the whole execution window, nothing is sent late; the next session
-    decides and executes normally (missed_policy skip)."""
+def _force_hold(e, session):
+    row = e.db.one("SELECT decision FROM decisions WHERE strategy_id=? AND session=?", (A, session))
+    d = json.loads(row["decision"])
+    d["rebalance"] = False
+    e.db.x("UPDATE decisions SET decision=? WHERE strategy_id=? AND session=?", (json.dumps(d), A, session))
+    return d
+
+
+def test_missed_window_then_hold_carries_the_standing_target_forward_once(tmp_path):
+    """INVARIANT (blocker 1): the engine is down for the whole 10-27 window, so the 10-26 rebalance never executes and
+    no plan for it is ever created later (never late). The 10-27 decision is a HOLD (same standing weights): at the
+    10-28 open, inside a fresh valid window, the standing target is carried forward with fresh quotes and every risk
+    check, sent exactly once; the next HOLD session (target now executed) trades nothing."""
+    bars = extended_store({dt.date(2026, 10, 27): 1.0, dt.date(2026, 10, 28): 1.0})
+    env = auto_env(tmp_path, bar_store=bars)
+    e = env.e
+    env.clock.set(DECIDE_AT)
+    e.cycle()
+    env.clock.set(dt.datetime(2026, 10, 27, 18, 0, tzinfo=UTC))        # down through the whole 10-27 window
+    e.cycle()
+    assert sent(env) == [] and e.db.one("SELECT COUNT(*) c FROM plans")["c"] == 0
+    env.clock.set(dt.datetime(2026, 10, 27, 20, 55, tzinfo=UTC))
+    e.cycle()
+    d = _force_hold(e, "2026-10-27")
+    env.clock.set(dt.datetime(2026, 10, 28, 13, 35, tzinfo=UTC))
+    e.cycle()
+    n = len(sent(env))
+    assert n > 0 and e.db.one("SELECT COUNT(*) c FROM audit_log WHERE kind='UNEXECUTED_TARGET_CARRIED_FORWARD'")["c"] == 1
+    assert {r["session"] for r in e.db.q("SELECT session FROM plans")} == {"2026-10-27"}   # never a 10-26 plan
+    bought = {env.broker.s["instruments"][str(env.broker.s["orders"][x["order_id"]]["instrument_id"])] for x in sent(env)}
+    assert bought <= {t for t, w in d["target_weights"].items() if w > 0}
+    env.engine()
+    env.clock.set(dt.datetime(2026, 10, 28, 13, 50, tzinfo=UTC))
+    env.e.cycle()
+    env.clock.set(dt.datetime(2026, 10, 28, 20, 55, tzinfo=UTC))
+    env.e.cycle()
+    _force_hold(env.e, "2026-10-28")
+    env.clock.set(dt.datetime(2026, 10, 29, 13, 35, tzinfo=UTC))
+    x = env.e.cycle()["execution"]["2026-10-28"]
+    assert x["status"] == "NO_REBALANCE" and len(sent(env)) == n
+
+
+def test_held_plan_abandoned_at_window_end_is_carried_forward_next_session(tmp_path, monkeypatch):
+    """INVARIANT: an order HELD for stale quotes during its whole window is ABANDONED at the window end (never sent
+    late); the next session's HOLD carries the standing target forward into its own fresh window."""
     bars = extended_store({dt.date(2026, 10, 27): 1.0})
     env = auto_env(tmp_path, bar_store=bars)
+    e = env.e
+    real = env.broker.quotes
+
+    def stale(ids):
+        return {k: q.__class__(q.instrument_id, q.bid, q.ask, (env.clock() - dt.timedelta(hours=2)).isoformat())
+                for k, q in real(ids).items()}
+    monkeypatch.setattr(env.broker, "quotes", stale)
     env.clock.set(DECIDE_AT)
-    env.e.cycle()
-    env.clock.set(dt.datetime(2026, 10, 27, 18, 0, tzinfo=UTC))       # engine was down 13:30-15:30 UTC
-    env.e.cycle()
-    assert sent(env) == []
+    e.cycle()
+    for m in (0, 20, 40):
+        env.clock.set(EXECUTE_AT + dt.timedelta(minutes=m))
+        e.cycle()
+    env.clock.set(dt.datetime(2026, 10, 27, 18, 0, tzinfo=UTC))
+    e.cycle()
+    assert sent(env) == [] and set(statuses(e)) == {"ABANDONED"}
+    monkeypatch.setattr(env.broker, "quotes", real)
     env.clock.set(dt.datetime(2026, 10, 27, 20, 55, tzinfo=UTC))
-    env.e.cycle()
+    e.cycle()
+    _force_hold(e, "2026-10-27")
     env.clock.set(dt.datetime(2026, 10, 28, 13, 35, tzinfo=UTC))
-    env.e.cycle()
-    plans = [r["status"] for r in env.e.db.q("SELECT status FROM plans ORDER BY created_at")]
-    assert len(plans) >= 1 and (len(sent(env)) > 0 or plans[-1] == "NO_LEGS")
+    e.cycle()
+    assert len(sent(env)) > 0 and len({x["client_ref"] for x in sent(env)}) == len(sent(env))
 
 
 def test_friday_hold_weekend_capital_transfer_monday_open_autonomous(tmp_path):
@@ -317,3 +370,21 @@ def test_activation_refusals(tmp_path, case, match):
         (tmp_path / "activation.json").unlink()
     with pytest.raises(LiveExecutionNotAvailable, match=match):
         _gate(tmp_path, env=env, probe=probe, release=release, cfg=cfg)
+
+
+def test_operator_cli_in_live_modes(tmp_path, capsys):
+    """INVARIANT: the activation template binds this release + config; the kill-switch CLI works in the autonomous
+    path (any mode with live_controls) and blocks the next execution."""
+    from utengine.cli import main
+    from utengine.core.takeover import release_id
+    p = _live_yaml(tmp_path)
+    assert main(["--config", str(p), "--home", str(tmp_path / "h"), "live-activation-template"]) == 0
+    t = json.loads(capsys.readouterr().out)
+    assert t["kind"] == "AUTONOMOUS_LIVE" and t["release_sha"] == release_id() and t["expires_at"] is None
+    assert t["config_fingerprint"] == load_engine_config(p)["_fingerprint"] and t["phrase"] == LIVE_ACTIVATION_PHRASE
+    env = auto_env(tmp_path / "sim")
+    base = ["--config", str(env.cfg_path), "--home", str(env.home)]
+    assert main(base + ["kill-switch", "--operator", "owner", "--reason", "drill"]) == 0
+    env.engine()
+    env.decide_and_execute()
+    assert sent(env) == [] and "KILL_SWITCH" in {h["kind"] for h in halts.active(env.e.db)}

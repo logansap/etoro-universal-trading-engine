@@ -107,11 +107,13 @@ def test_hold_sleeve_invests_restructured_cash_from_a_cash_only_account(tmp_path
 
 
 def test_hold_without_capital_change_still_holds(tmp_path):
-    """INVARIANT: without an audited inflow nothing changes: a HOLD decision trades nothing (strategy semantics)."""
+    """INVARIANT: once the standing target WAS executed, a HOLD decision with no audited inflow trades nothing
+    (strategy semantics). (A HOLD after an UNEXECUTED target carries it forward instead: tests/test_autonomous_live.)"""
     env = multi_env(tmp_path, bar_store=extended_store({D2: 1.0}))
     e = env.engine()
-    env.clock.set(DECIDE_AT)
-    e.cycle()
+    env.decide_and_execute()                                        # 10-26 target executed at the 10-27 open
+    n = len([s for s in env.broker.s["submissions"] if s["kind"] == "open"])
+    assert n > 0
     env.clock.set(NEXT_DECIDE)
     e.cycle()
     for sid in (A, B):
@@ -121,7 +123,7 @@ def test_hold_without_capital_change_still_holds(tmp_path):
         e.db.x("UPDATE decisions SET decision=? WHERE strategy_id=? AND session=?", (json.dumps(d), sid, D2.isoformat()))
     env.clock.set(NEXT_EXECUTE)
     assert e.cycle()["execution"][D2.isoformat()]["status"] == "NO_REBALANCE"
-    assert [s for s in env.broker.s["submissions"] if s["kind"] == "open"] == []
+    assert len([s for s in env.broker.s["submissions"] if s["kind"] == "open"]) == n
 
 
 def test_spread_gate_blocks_wide_quotes(tmp_path):

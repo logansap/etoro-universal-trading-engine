@@ -397,7 +397,8 @@ class TradingEngine:
         exec_session = now.astimezone(NY).date()
         verdict = evaluate(self.db, self.cfg, spec, legs, alloc, quotes, decision_session=body["decision"]["session"],
                            execution_session=exec_session, calendar=self.cal, now=now,
-                           available_cash=r.snapshot.available_cash + sum(l.amount or 0 for l in legs if l.phase == 1))
+                           available_cash=r.snapshot.available_cash + sum(l.amount or 0 for l in legs if l.phase == 1),
+                           defer_quote_checks=self.executor.supervisor is not None)
         with self.db.tx():
             self.db.con.execute("INSERT OR IGNORE INTO plans VALUES(?,?,?,?,?,?,?,?)",
                                 (plan_id, body["decision"].get("decision_id", body["decision"]["session"]), spec["id"],

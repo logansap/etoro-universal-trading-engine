@@ -46,7 +46,11 @@ def check_limits(db, cfg, daily_prev, strategy_equity, flows_since, now) -> None
 
 
 def evaluate(db, cfg: dict, spec: dict, legs: list, allocation, quotes: dict, *, decision_session: str,
-             execution_session: dt.date, calendar, now: dt.datetime, available_cash: float | None) -> RiskVerdict:
+             execution_session: dt.date, calendar, now: dt.datetime, available_cash: float | None,
+             defer_quote_checks: bool = False) -> RiskVerdict:
+    """defer_quote_checks: the execution guard (live / supervised / simulation with live_controls) re-checks the quote
+    (validity, age, spread) of every open when it would be SENT and HOLDs it until fresh within the window; a stale
+    quote at planning time must then not become a permanent BLOCK of the leg."""
     r = cfg["risk"]
     v = RiskVerdict(approved=[])
     act = halts.active(db)
@@ -84,6 +88,8 @@ def evaluate(db, cfg: dict, spec: dict, legs: list, allocation, quotes: dict, *,
                 reason = f"amount {leg.amount:.2f} > max_single_order_usd {r['max_single_order_usd']}"
             elif leg.amount < r["min_order_usd"]:
                 reason = f"amount {leg.amount:.2f} < min_order_usd {r['min_order_usd']}"
+            elif defer_quote_checks:
+                pass                                      # validity, age and spread: checked at send time
             elif q is None or not (q.bid > 0 and q.ask >= q.bid):
                 reason = "no valid quote"
             elif _age(q.quote_time, now) > r["max_quote_age_seconds"]:

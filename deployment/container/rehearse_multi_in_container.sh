@@ -177,8 +177,34 @@ P
   I2=$($PY -c "import json; print(sorted(p['intent_id'] for p in json.load(open('/rehearsal/pilot_pending.json')))[-1])")
   psim orders approve --intent $I2 --approved-by rehearsal-owner > /dev/null 2>&1
   psim --now 2026-10-27T13:41:00+00:00 run --once > /rehearsal/pilot_x1d.log 2>&1
-  check "pilot: with the kill switch engaged an approved order is BLOCKED, never sent" "[ \$(psubs) -eq 1 ] && sqlite3 $PHOME/engine.sqlite \"select status from intents where intent_id='$I2'\" | grep -qx BLOCKED"
+  check "pilot: with the kill switch engaged an approved order is never sent (halt ALL KILL_SWITCH active)" "[ \$(psubs) -eq 1 ] && sqlite3 $PHOME/engine.sqlite \"select status from intents where intent_id='$I2'\" | grep -qxE 'INTENT_PERSISTED|BLOCKED|ABANDONED' && sqlite3 $PHOME/engine.sqlite \"select kind from halts where status='ACTIVE'\" | grep -qx KILL_SWITCH"
   check "pilot: the production instance is untouched (still shadow, no write capability)" "asute $TE status | grep -q '\"write_capability\": false' && grep -q '^  mode: shadow' /etc/etoro-ute/engine.yaml"
+  fi
+
+  if grep -q '^LIVE_RELEASE_ENABLED = True' /home/ute/current/src/utengine/core/security.py 2>/dev/null; then
+  say "## L. AUTONOMOUS live path (autonomous-live release; simulated broker + live_controls, sandboxed unit as ute)"
+  LCFG=/etc/etoro-ute/engine.sim-live.yaml; LHOME=/home/ute/data/sim-live
+  install -d -m 0750 -o ute -g ute "$LHOME"
+  $PY $HELP live-config /home/ute/current "$LCFG" /home/ute/data/sim-fixtures "$LHOME"; chown root:ute "$LCFG"; chmod 640 "$LCFG"
+  lsim() { systemd-run --wait --pipe --quiet --collect -p User=ute -p Group=ute -p ProtectSystem=strict -p ProtectHome=tmpfs -p PrivateTmp=yes -p NoNewPrivileges=yes -p BindReadOnlyPaths=/home/ute -p BindPaths=/home/ute/data -p InaccessiblePaths=-/home/engine -p ReadOnlyPaths=/etc/etoro-ute "$TE" --config "$LCFG" --home "$LHOME" "$@"; }
+  lsubs() { $PY -c "import json; print(len(json.load(open('$LHOME/sim_broker.json'))['submissions']))"; }
+  check "live: the configuration validates (simulation + live_controls = the autonomous path)" "lsim config validate"
+  lsim --now $D1 sim deposit --amount 2000 --evidence "live rehearsal funding" > /dev/null 2>&1
+  lsim --now $D1 run --once > /rehearsal/live_d1.log 2>&1
+  $PY $HELP fault "$LHOME/sim_broker.json" read_unavailable
+  lsim --now $X1 run --once > /rehearsal/live_x1_outage.log 2>&1
+  check "live: a broker outage at the open sends nothing (BROKER_UNAVAILABLE)" "[ \$(lsubs) -eq 0 ] && grep -q BROKER_UNAVAILABLE /rehearsal/live_x1_outage.log"
+  lsim --now 2026-10-27T13:38:00+00:00 run --once > /rehearsal/live_x1.log 2>&1
+  N1=$(lsubs)
+  check "live: recovery on the next good read; first acquisition sent automatically, no approval" "[ $N1 -gt 0 ] && ! sqlite3 $LHOME/engine.sqlite \"select kind from halts where status='ACTIVE'\" | grep -q ."
+  lsim --now 2026-10-27T13:45:00+00:00 run --once > /rehearsal/live_x1b.log 2>&1
+  check "live: a restart and another cycle resend nothing" "[ \$(lsubs) -eq $N1 ] && [ \$($PY -c \"import json; s=json.load(open('$LHOME/sim_broker.json'))['submissions']; r=[x['client_ref'] for x in s]; print(len(r)-len(set(r)))\") -eq 0 ]"
+  check "live: kill-switch CLI works in autonomous mode (file + halt ALL)" "lsim kill-switch --operator rehearsal-owner --reason drill && [ -e $LHOME/KILL_SWITCH ]"
+  lsim --now $D2 run --once > /rehearsal/live_d2.log 2>&1
+  $PY $HELP force-decision "$LHOME" QC_529_ETORO_RESTRICTED 2026-10-27 '{"TQQQ": 0.10}'
+  lsim --now $X2 run --once > /rehearsal/live_x2.log 2>&1
+  check "live: with the kill switch engaged the next session sends nothing" "[ \$(lsubs) -eq $N1 ]"
+  check "live: the production instance is untouched (still shadow, no write capability)" "asute $TE status | grep -q '\"write_capability\": false' && grep -q '^  mode: shadow' /etc/etoro-ute/engine.yaml"
   fi
 
   say "## D. adversarial refusals"

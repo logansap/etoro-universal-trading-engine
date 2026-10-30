@@ -101,6 +101,23 @@ def record_portfolio_daily(e, r, session: str, now: dt.datetime) -> dict | None:
             "incomplete valuation (no broker value for a held instrument): not recorded"}
 
 
+def standing_session(db, sid: str, upto: str) -> str | None:
+    """The session of the sleeve's most recent REBALANCING decision at or before `upto`: the strategy's standing
+    target (a HOLD decision carries those same weights)."""
+    for r in db.q("SELECT session, decision FROM decisions WHERE strategy_id=? AND session<=? AND status='DECIDED' "
+                  "ORDER BY session DESC", (sid, upto)):
+        if json.loads(r["decision"]).get("rebalance"):
+            return r["session"]
+    return None
+
+
+def mark_target_executed(db, sid: str, session: str, plan_id: str, now: str) -> None:
+    st = standing_session(db, sid, session)
+    if st is not None and db.get(f"target_executed:{sid}") != st:
+        db.put(f"target_executed:{sid}", st)
+        db.audit("TARGET_EXECUTED", {"sleeve": sid, "standing_session": st, "plan_id": plan_id}, ts=now)
+
+
 def _merged_spec(e, specs: list) -> dict:
     inst = {}
     for sp in specs:
@@ -128,12 +145,21 @@ def execute_portfolio(e, session: dt.date, sids: list, now: dt.datetime, drift: 
         d = json.loads(drow["decision"])
         if not d["rebalance"] and not planned:
             cu = sleeves.catch_up_pending(db, sid)
-            if cu is None:
+            standing = standing_session(db, sid, ss)
+            unexecuted = standing is not None and db.get(f"target_executed:{sid}") != standing
+            if cu is None and not unexecuted:
                 notes.append(f"{sid}: decision does not rebalance; holds")
                 continue
             d = {**d, "rebalance": True}
-            notes.append(f"{sid}: CAPITAL_CATCH_UP ({cu['reason']}, {cu['ref']}): re-targets the decision's standing "
-                         "weights on the sleeve's equity (no new signal)")
+            if cu is not None:
+                notes.append(f"{sid}: CAPITAL_CATCH_UP ({cu['reason']}, {cu['ref']}): re-targets the decision's "
+                             "standing weights on the sleeve's equity (no new signal)")
+            if unexecuted:
+                notes.append(f"{sid}: UNEXECUTED_TARGET_CARRIED_FORWARD: the standing target decided on {standing} was "
+                             "never executed (missed / held / blocked window); it is pursued in THIS window with "
+                             "fresh quotes, sizes and every risk check (the old plan is never sent)")
+                db.audit("UNEXECUTED_TARGET_CARRIED_FORWARD", {"sleeve": sid, "standing_session": standing,
+                                                               "execution_session": ss}, ts=nows)
         group.append((sid, drow["decision_id"], d, planned))
     if not group:
         return {"status": "NO_REBALANCE", "notes": notes}
@@ -220,6 +246,7 @@ def execute_portfolio(e, session: dt.date, sids: list, now: dt.datetime, drift: 
             db.put(f"sleeve_planned:{ss}:{inp['sleeve']}", plan_id)
             if executed:
                 sleeves.consume_catch_up(db, inp["sleeve"], plan_id, nows)
+                mark_target_executed(db, inp["sleeve"], ss, plan_id, nows)
             elif sleeves.catch_up_pending(db, inp["sleeve"]):
                 db.audit("CATCH_UP_KEPT", {"sleeve": inp["sleeve"], "plan_id": plan_id, "plan_status": res.get("status"),
                                            "blocked_opens": len(opens_blocked)}, ts=nows)
@@ -259,6 +286,8 @@ def _resume(e, plan_id: str, now: dt.datetime) -> dict:
     if res["status"] == "DONE" and not [b for b, _w in plan.get("blocked", []) if b.get("action") == "OPEN"]:
         for s in sorted({x[0] for leg in plan["legs"] for x in (leg.get("sleeves") or [])}):
             sleeves.consume_catch_up(e.db, s, plan_id, e.nows())
+            sess = e.db.one("SELECT session FROM plans WHERE plan_id=?", (plan_id,))["session"]
+            mark_target_executed(e.db, s, sess, plan_id, e.nows())
     return {**res, "resumed": True}
 
 
