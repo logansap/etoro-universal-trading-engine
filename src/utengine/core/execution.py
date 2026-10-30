@@ -147,6 +147,13 @@ class Executor:
             return "ABANDONED"
         pre = {"positions": {p.position_id: p.units for p in snap.positions},
                "pending": [o.order_id for o in snap.pending_orders], "credit": snap.credit, "at": snap.as_of}
+        if row["action"] != "OPEN":
+            queued = [o.order_id for o in snap.pending_orders
+                      if o.kind == "close" and str(row["position_id"]) in o.position_ids]
+            if queued:                            # a close is already in flight: a second one would duplicate it
+                transition(self.db, iid, "ABANDONED", self.now(), {"reason": f"position {row['position_id']} already "
+                                                                             f"has a pending close order {queued}"})
+                return "ABANDONED"
         transition(self.db, iid, "SUBMITTING", self.now(), {"pre_submit_snapshot": snap.raw_sha256[:16]},
                    pre_submit=pre)
         try:
@@ -314,7 +321,21 @@ class Executor:
                 transition(self.db, iid, "FILLED", self.now(), {"evidence": f"position {pid} units {before} -> "
                                                                             f"{now_units}", "proceeds_evidence": info})
                 return "FILLED"
-            evidence = f"position {pid} unchanged ({now_units} units)"
+            # eToro gives a close no client reference, but a close the broker accepted and has not executed yet
+            # (e.g. queued for the open) is listed as a pending close order naming this position: adopt it
+            queued = [o for o in snap.pending_orders if o.kind == "close" and str(pid) in o.position_ids
+                      and o.order_id not in pre.get("pending", []) and o.order_id not in engine_orders]
+            if before is not None and now_units is not None and len(queued) == 1:
+                o = queued[0]
+                with self.db.tx():
+                    self.db.con.execute("UPDATE intents SET broker_order_id=? WHERE intent_id=?", (o.order_id, iid))
+                transition(self.db, iid, "PENDING", self.now(), {"evidence": f"new pending close order {o.order_id} "
+                                                                             f"for position {pid}"})
+                self.db.audit("ORDER_FOUND_BY_PENDING_CLOSE", {"intent_id": iid, "order_id": o.order_id,
+                                                               "position_id": pid}, ts=self.now())
+                return self.poll(dict(self.db.one("SELECT * FROM intents WHERE intent_id=?", (iid,))))
+            evidence = (f"position {pid} unchanged ({now_units} units), {len(queued)} new pending close order(s) "
+                        "for it")
         transition(self.db, iid, "UNKNOWN", self.now(), {"evidence": evidence})
         # No evidence either way. The intent is never resubmitted; all new orders stop until the broker shows the
         # outcome (re-checked every cycle) or an operator records it after checking the broker by hand.

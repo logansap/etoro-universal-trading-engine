@@ -174,6 +174,8 @@ class SimulatedBroker(BrokerReader, BrokerWriter):
                 if rest > 0:
                     self._fill_open(o, rest)
                 o["status_id"] = STATUS_FILLED
+            elif o["status_id"] == STATUS_PLACED and o["kind"] == "close":
+                self._fill_close(o, o["queued_position_id"], o.get("queued_units"))
         self._save()
 
     # ------------------------------------------------------------------ reader
@@ -208,6 +210,10 @@ class SimulatedBroker(BrokerReader, BrokerWriter):
                                 amount=round(o["amount"] - o["filled_amount"], 6), is_buy=True, kind="open")
                    for oid, o in sorted(self.s["orders"].items())
                    if o["kind"] == "open" and o["status_id"] in (STATUS_PLACED, STATUS_PARTIAL)]
+        pending += [PendingOrder(order_id=oid, instrument_id=o["instrument_id"], amount=0.0, is_buy=False,
+                                 kind="close", position_ids=(o["queued_position_id"],), units=o.get("queued_units"))
+                    for oid, o in sorted(self.s["orders"].items())
+                    if o["kind"] == "close" and o["status_id"] == STATUS_PLACED]
         raw = {"credit": self.s["credit"], "positions": self.s["positions"], "pending": [p.__dict__ for p in pending]}
         return AccountSnapshot(as_of=self._now(), credit=self.s["credit"],
                                pending_open_amount=round(sum(p.amount for p in pending), 6),
@@ -335,7 +341,7 @@ class SimulatedBroker(BrokerReader, BrokerWriter):
 
     def submit_close(self, position_id, instrument_id, units, *, client_ref):
         fault = self._take_fault(("network_before", "http_reject", "reject", "timeout_after_accept",
-                                  "crash_after_submit"))
+                                  "crash_after_submit", "queued_close", "queued_close_timeout"))
         if fault == "network_before":
             self._save()
             raise BrokerAmbiguousError("simulated connection reset before the request reached the broker")
@@ -348,6 +354,22 @@ class SimulatedBroker(BrokerReader, BrokerWriter):
             o["status_id"], o["error_code"], o["error_message"] = STATUS_REJECTED, 404, "position not found"
         elif fault and fault.startswith("reject"):
             o["status_id"], o["error_code"], o["error_message"] = STATUS_REJECTED, 999, "simulated rejection"
+        elif fault in ("queued_close", "queued_close_timeout"):      # market shut: executes at advance()
+            o.update(status_id=STATUS_PLACED, queued_position_id=str(position_id),
+                     queued_units=None if units is None else round(float(units), 6))
+        else:
+            self._fill_close(o, str(position_id), units)
+        self._save()
+        if fault in ("timeout_after_accept", "queued_close_timeout"):
+            raise BrokerAmbiguousError("simulated read timeout after the broker accepted the close")
+        if fault == "crash_after_submit":
+            raise SimulatedCrash("engine killed after the broker accepted the close")
+        return SubmitResult(order_id=oid, raw={"orderId": oid})
+
+    def _fill_close(self, o, position_id, units):
+        p = self.s["positions"].get(str(position_id))
+        if p is None:
+            o["status_id"], o["error_code"], o["error_message"] = STATUS_REJECTED, 404, "position not found"
         else:
             bid, ask = self._price(p["instrument_id"])
             u = p["units"] if units is None or units >= p["units"] - 1e-9 else round(float(units), 6)
@@ -370,9 +392,3 @@ class SimulatedBroker(BrokerReader, BrokerWriter):
                 self.s["credit"] = round(self.s["credit"] + proceeds, 6)
                 o.update(status_id=STATUS_FILLED, proceeds=proceeds, rate=bid if buy else ask, filled_units=u,
                          filled_amount=released, position_ids=[split_id], closed_position_id=str(position_id))
-        self._save()
-        if fault == "timeout_after_accept":
-            raise BrokerAmbiguousError("simulated read timeout after the broker accepted the close")
-        if fault == "crash_after_submit":
-            raise SimulatedCrash("engine killed after the broker accepted the close")
-        return SubmitResult(order_id=oid, raw={"orderId": oid})

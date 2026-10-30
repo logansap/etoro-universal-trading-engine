@@ -63,6 +63,16 @@ def check_read_only(method: str, path: str) -> None:
 USER_AGENT = "etoro-universal-trading-engine/0.9 (read-only)"
 
 
+def _ts(value) -> dt.datetime:
+    """A broker timestamp (eToro sends up to 7 fractional digits, Z or an offset); unparseable = oldest."""
+    s = re.sub(r"\.(\d{1,6})\d*", lambda m: "." + m.group(1).ljust(6, "0"), str(value or "").strip().replace("Z", "+00:00"))
+    try:
+        d = dt.datetime.fromisoformat(s)
+    except ValueError:
+        return dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+    return d if d.tzinfo else d.replace(tzinfo=dt.timezone.utc)
+
+
 class UrllibTransport:
     """eToro's edge rejects urllib's default "Python-urllib/x.y" signature with HTTP 403 "error code: 1010" (observed
     2026-10-29 with the engine's own read-only key), so every request carries an honest, identifying User-Agent."""
@@ -85,7 +95,7 @@ class UrllibTransport:
 class EtoroReadOnly(BrokerReader):
     name = "etoro-read-only"
 
-    def __init__(self, cfg: dict, transport=None, env=None):
+    def __init__(self, cfg: dict, transport=None, env=None, ws_fetch=None):
         env = os.environ if env is None else env
         b = cfg["broker"]
         if b["access"] != "live_read_only":
@@ -94,6 +104,12 @@ class EtoroReadOnly(BrokerReader):
         self._user_key = env.get(b["credentials_env"]["user_key"])
         self.configured = bool(self._api_key and self._user_key)
         self.transport = transport or UrllibTransport(b["request_timeout_seconds"])
+        # fresher quotes from eToro's own WebSocket feed (blocker G14); a fake in tests, None = REST only
+        if ws_fetch is None and transport is None:
+            from .etoro_ws import fetch_snapshots
+            ws_fetch = fetch_snapshots
+        self.ws_fetch = ws_fetch
+        self.last_quote_sources: dict = {}
         self.symbols = {}
         self.key_scopes_verified = False
 
@@ -191,6 +207,18 @@ class EtoroReadOnly(BrokerReader):
                 pend_amt += amt
                 pend.append(PendingOrder(str(o.get("orderID")), int(o.get("instrumentID", 0)), amt,
                                          bool(o.get("isBuy", True)), "mit"))
+        # pending CLOSE orders (documented OrderForClose / OrderForCloseMultiple: orderId, instrumentId,
+        # unitsToDeduct, positionId | pendingClosePositionIds), e.g. a close placed while the market is shut and
+        # queued for the open. They reserve no cash; they prove that a close is already in flight for a position.
+        for key in ("ordersForClose", "ordersForCloseMultiple"):
+            for o in port.get(key) or []:
+                if not isinstance(o, dict):
+                    continue
+                pids = o.get("pendingClosePositionIds") if key == "ordersForCloseMultiple" else [o.get("positionId")]
+                units = o.get("unitsToDeduct")
+                pend.append(PendingOrder(str(o.get("orderId")), int(o.get("instrumentId", 0)), 0.0, False, "close",
+                                         position_ids=tuple(str(p) for p in pids or [] if p is not None),
+                                         units=float(units) if isinstance(units, (int, float)) and units else None))
         positions = []
         for p in port.get("positions") or []:
             u = p.get("unrealizedPnL")
@@ -354,10 +382,25 @@ class EtoroReadOnly(BrokerReader):
         return {"raw": r}
 
     def quotes(self, instrument_ids):
+        """REST rates (always), plus one read-only WebSocket snapshot session (best effort): per instrument the quote
+        with the NEWER broker timestamp wins. REST alone is hours stale for most leveraged ETFs (G14); the WS feed is
+        eToro's own current Bid/Ask/Date. Freshness is still judged downstream by the same max-age gate."""
         ids = ",".join(str(int(i)) for i in instrument_ids)
         r = self._request("GET", f"/api/v1/market-data/instruments/rates?instrumentIds={ids}")
-        out = {}
+        out, src = {}, {}
         for q in r.get("rates", []):
             out[int(q["instrumentID"])] = Quote(int(q["instrumentID"]), float(q["bid"]), float(q["ask"]),
                                                 str(q.get("date")))
+            src[int(q["instrumentID"])] = "rest"
+        if self.ws_fetch is not None:
+            try:
+                ws = self.ws_fetch([int(i) for i in instrument_ids], self._api_key, self._user_key)
+            except Exception:  # noqa: BLE001 -- the WS feed is never the sole source
+                ws = {}
+            for iid, (bid, ask, date) in (ws or {}).items():
+                cur = out.get(int(iid))
+                if cur is None or _ts(date) > _ts(cur.quote_time):
+                    out[int(iid)] = Quote(int(iid), float(bid), float(ask), str(date))
+                    src[int(iid)] = "ws"
+        self.last_quote_sources = src
         return out

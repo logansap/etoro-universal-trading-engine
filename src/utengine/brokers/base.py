@@ -55,6 +55,8 @@ class PendingOrder:
     amount: float
     is_buy: bool
     kind: str                       # open | mit | close
+    position_ids: tuple = ()        # close orders: the position(s) this order closes
+    units: float | None = None      # close orders: units to deduct as reported by the broker
 
 
 @dataclass(frozen=True)

@@ -141,7 +141,12 @@ def preview(e, now: dt.datetime, *, context_quotes: dict | None = None, reader=N
                      if lev_or_short else {"note": "x1 long CFD: eToro publishes 0 overnight fee (observed 0 on "
                                                     "SOXS/SQQQ/QQQ)"})
         separate = []
-        if owner == "ENGINE":
+        queued = [o.order_id for o in inv.pending_orders if o.kind == "close" and p.position_id in o.position_ids]
+        if queued:
+            action = "CLOSE_PENDING_AT_BROKER"
+            separate.append(f"pending close order {', '.join(queued)} at the broker: it executes on its own; never "
+                            "submit a second close for this position")
+        elif owner == "ENGINE":
             action = "KEEP_ENGINE_SLEEVE"
         else:
             if proceeds is None:
@@ -172,8 +177,13 @@ def preview(e, now: dt.datetime, *, context_quotes: dict | None = None, reader=N
                 "separate_reasons": ["copy-trading mirror: stop copying in the eToro app (no API path in this engine)"]}
                for m in inv.mirrors]
     pending = [{"order_id": o.order_id, "instrument_id": o.instrument_id, "amount": o.amount, "kind": o.kind,
-                "action": "SEPARATE_HANDLING", "separate_reasons": ["pending order: cancel in the eToro app (this "
-                                                                    "engine has no cancel capability)"]}
+                "position_ids": list(o.position_ids),
+                **({"action": "AWAIT_BROKER_EXECUTION",
+                    "separate_reasons": [f"pending close of position(s) {', '.join(o.position_ids) or '?'}: wait for "
+                                         "it to execute (do not duplicate it); re-preview afterwards"]}
+                   if o.kind == "close" else
+                   {"action": "SEPARATE_HANDLING", "separate_reasons": ["pending order: cancel in the eToro app (this "
+                                                                        "engine has no cancel capability)"]})}
                for o in inv.pending_orders]
     writers = [dict(w) for w in t["known_writers"]]
     foreign = [r for r in rows if r["owner"] != "ENGINE"]
@@ -190,7 +200,8 @@ def preview(e, now: dt.datetime, *, context_quotes: dict | None = None, reader=N
     cash = inv.available_cash
     est = round(cash + sum(r["est_close_proceeds"] for r in closes), 2)
     worst = round(cash + sum(r["est_proceeds_worst"] for r in closes), 2)
-    sep_est = [r for r in rows if r["action"] == "SEPARATE_HANDLING" and r["est_close_proceeds"] is not None]
+    sep_est = [r for r in rows if r["action"] in ("SEPARATE_HANDLING", "CLOSE_PENDING_AT_BROKER")
+               and r["est_close_proceeds"] is not None]
     indicative = round(est + sum(r["est_close_proceeds"] for r in sep_est), 2)
     remaining = {"positions": [r["position_id"] for r in rows if r["action"] != "CLOSE"],
                  "exposure_usd": round(sum(r["exposure_usd"] for r in rows if r["action"] != "CLOSE"), 2),
