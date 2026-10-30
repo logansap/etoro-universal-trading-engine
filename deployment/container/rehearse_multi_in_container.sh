@@ -191,6 +191,9 @@ P
   check "live: the configuration validates (simulation + live_controls = the autonomous path)" "lsim config validate"
   lsim --now $D1 sim deposit --amount 2000 --evidence "live rehearsal funding" > /dev/null 2>&1
   lsim --now $D1 run --once > /rehearsal/live_d1.log 2>&1
+  # the outage lasts the whole run: the start-up reconciliation AND the pre-planning read both fail (one failed read
+  # alone is recovered inside the same run by the next good read, which is also correct behaviour)
+  $PY $HELP fault "$LHOME/sim_broker.json" read_unavailable
   $PY $HELP fault "$LHOME/sim_broker.json" read_unavailable
   lsim --now $X1 run --once > /rehearsal/live_x1_outage.log 2>&1
   check "live: a broker outage at the open sends nothing (BROKER_UNAVAILABLE)" "[ \$(lsubs) -eq 0 ] && grep -q BROKER_UNAVAILABLE /rehearsal/live_x1_outage.log"
