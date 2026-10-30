@@ -175,13 +175,17 @@ def execute_portfolio(e, session: dt.date, sids: list, now: dt.datetime, drift: 
     if not inputs:
         return {**out, "status": "NO_REBALANCE", "notes": notes}
     positions = e.engine_positions(r)
-    tgt, iids = {}, {}
+    tgt, exact, iids = {}, {}, {}
     for inp in inputs:
-        for sym, usd in inp["alloc"].targets_usd.items():
+        a = inp["alloc"]
+        for sym, usd in a.targets_usd.items():
             tgt[sym] = round(tgt.get(sym, 0.0) + usd, 2)
-            iids[sym] = inp["alloc"].instrument_ids[sym]
+            exact[sym] = exact.get(sym, 0.0) + a.target_weights[sym] * a.strategy_equity
+            iids[sym] = a.instrument_ids[sym]
     eq = r.strategy_equity
-    agg = Allocation(eq, tgt, {s: (v / eq if eq > 0 else 0.0) for s, v in tgt.items()}, iids, {},
+    # weights from the UNROUNDED sleeve targets: a fully invested sleeve (gross exactly 1.0) must not read as
+    # 1.00000x because each USD target was rounded up to the cent (that blocked the whole plan at the gross limit)
+    agg = Allocation(eq, tgt, {s: (v / eq if eq > 0 else 0.0) for s, v in exact.items()}, iids, {},
                      round(eq - sum(tgt.values()), 2))
     quotes = e.quotes_for(positions, agg)
     pf = sleeves.portfolio(db)

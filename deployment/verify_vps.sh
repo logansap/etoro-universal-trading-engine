@@ -48,7 +48,9 @@ fi
 
 echo "## configuration"
 check "mode shadow" "grep -q '^  mode: shadow' $UTE_CONFIG"
-check "50/50 portfolio (both sleeves)" "grep -q '^  mode: multi_strategy' $UTE_CONFIG && grep -q 'strategy: QC_529_ETORO_RESTRICTED' $UTE_CONFIG && grep -q 'strategy: QC_60_SQQQ' $UTE_CONFIG"
+check "multi-strategy sleeve portfolio configured" "grep -q '^  mode: multi_strategy' $UTE_CONFIG && grep -q '^    - strategy: ' $UTE_CONFIG"
+info "configured sleeves: $(sed -n 's/^    - strategy: //p' $UTE_CONFIG | tr '
+' ' ')(the database record governs after the first start)"
 check "config $UTE_CONFIG is root:$UTE_USER 640" "[ \"\$(stat -c '%a %U:%G' $UTE_CONFIG)\" = '640 root:$UTE_USER' ]"
 if [ -f "$UTE_CRED" ]; then
   check "credential file root:$UTE_USER 640, exactly the two read-only names, LF" \

@@ -155,6 +155,13 @@ def cmd_portfolio(a):
     if not r.clean:
         raise SystemExit("reconciliation is not clean: " + "; ".join(i["kind"] for i in r.issues))
     val = e.sleeve_valuation(r)
+    if a.action == "restructure-preview":
+        w = {k: float(v) for k, v in (x.split("=") for x in a.weights.split(","))}
+        _print(sleeves.restructure_preview(e.db, w, val, e.specs, REGISTRY, e.nows()))
+        return 0
+    if a.action == "restructure":
+        _print(sleeves.restructure(e.db, a.preview_hash, a.approved_by, val, e.nows()))
+        return 0
     if a.action == "reallocate-preview":
         w = {k: float(v) for k, v in (x.split("=") for x in a.weights.split(","))}
         _print(sleeves.reallocation_preview(e.db, w, val, e.nows()))
@@ -549,6 +556,11 @@ def build_parser():
     ra_ = pfs.add_parser("reallocate")
     ra_.add_argument("--preview-hash", required=True)
     ra_.add_argument("--approved-by", required=True)
+    rsp = pfs.add_parser("restructure-preview", help="add/retire sleeves (e.g. 50/50 -> one 100%% sleeve); cash only")
+    rsp.add_argument("--weights", required=True, help="e.g. QC_529_ETORO_API2=1.0")
+    rs_ = pfs.add_parser("restructure")
+    rs_.add_argument("--preview-hash", required=True)
+    rs_.add_argument("--approved-by", required=True)
     pf.set_defaults(fn=cmd_portfolio)
     ex = sub.add_parser("exceptions", help="durable open exceptions (one per issue)")
     ex.add_argument("--all", action="store_true")

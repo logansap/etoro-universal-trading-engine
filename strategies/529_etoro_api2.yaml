@@ -1,0 +1,86 @@
+# VARIANT C of QuantConnect #529 (added 2026-10-30, ELIG-API-2): the SAME frozen rules, module and settings as
+# strategies/529.yaml and 529_etoro_restricted.yaml, run on the 15 instruments the READ-ONLY eToro API confirmed on
+# 2026-10-29 and 2026-10-30 (found by exact search, not delisted, not hidden, allowOpenPosition, x1 long CFD).
+# SVIX, BTAL, TECS and UVIX are not listed (exact search incl. ".US" aliases): their weight stays CASH, never
+# substituted, never redistributed. A distinct, separately identified strategy: QC_529_ETORO_RESTRICTED (variant B,
+# 11 instruments) is unchanged. Research replay (2016-01-04..2026-10-21): research/blend_529_60/run_universe_v2.py.
+schema_version: 1
+id: QC_529_ETORO_API2
+name: "#529 eToro API-2 (variant C): frozen #529 rules on the 15 API-confirmed instruments, the rest in cash"
+implementation: qc529
+version: 1.0.0
+fingerprint: sha256:0d3db7ac7d94665587d75c0fa6be9fe8a75c24149d5bd716b1e86b23179eea92
+enabled: true
+live_eligible: false
+live_eligibility_note: >-
+  Variant C candidate. Not live-eligible until every gate in GO_LIVE_DECISION.md passes and the owner approves this
+  strategy version. Executable universe = 15 instruments API-confirmed on this account (2026-10-29/30, read-only key):
+  UVXY TECL SOXL SPXL LABU SVXY SQQQ TLT BIL TQQQ SOXS QQQ PSQ QLD BSV. SVIX UVIX BTAL TECS weight stays cash.
+source:
+  reference: src/utengine/strategy_modules/vendor/QC_529_Original.py
+  sha256: 40c270b8fc67f47a253b5947a9e0f729a6dbf98dca7e62e4b2e3bc4439c74ec6
+  note: logic executed by vendor/tsr_frozen/ports.py S529 (sha256 0453c1ea...)
+indicators: {}
+universe:
+  signal: [TQQQ, TECL, SOXL, SQQQ, UVXY, SVIX, SVXY, XLK, KMLM, TLT, QQQE, VTV, VOX, VOOG, VOOV, XLP, XLY, FAS,
+           SPXL, LABU, SPY, IOO, XLF, TECS, SOXS, QQQ, PSQ, QLD, BTAL, BIL, AGG, SH, BND, IEF, BSV, SMH, UVIX]
+  tradable: [UVXY, TECL, SOXL, SPXL, LABU, SVIX, SVXY, SQQQ, TLT, BIL, BTAL, TQQQ, TECS, SOXS, QQQ, PSQ, QLD,
+             BSV, UVIX]
+substitutions: {}
+instruments:
+  UVXY: {etoro_instrument_id: 3246, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  TECL: {etoro_instrument_id: 10855, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  SPXL: {etoro_instrument_id: 3230, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  SQQQ: {etoro_instrument_id: 4459, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "traded (GM)"}
+  TLT: {etoro_instrument_id: 3020, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  BIL: {etoro_instrument_id: 4407, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  TQQQ: {etoro_instrument_id: 4465, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  SOXS: {etoro_instrument_id: 3227, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "traded (GM)"}
+  QQQ: {etoro_instrument_id: 3006, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "traded (GM)"}
+  PSQ: {etoro_instrument_id: 2192, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  QLD: {etoro_instrument_id: 15727, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "GM leaf_reference"}
+  SOXL: {etoro_instrument_id: 3226, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "API 2026-10-29/30: allowOpen, x1 long CFD"}
+  LABU: {etoro_instrument_id: 3199, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "API 2026-10-29/30 as LABU.US: allowOpen, x1 long CFD"}
+  SVXY: {etoro_instrument_id: 3236, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "API 2026-10-29/30: allowOpen, x1 long CFD"}
+  BSV: {etoro_instrument_id: 4296, eligibility: VERIFIED_TRADABLE, settlement: CFD, evidence: "API 2026-10-29/30: allowOpen, x1 long CFD"}
+  SVIX: {etoro_instrument_id: null, eligibility: VERIFIED_UNAVAILABLE, settlement: UNKNOWN, evidence: "API exact search (incl. .US) empty 2026-10-29/30; owner: unavailable"}
+  UVIX: {etoro_instrument_id: null, eligibility: VERIFIED_UNAVAILABLE, settlement: UNKNOWN, evidence: "API exact search (incl. .US) empty 2026-10-29/30; owner: unavailable"}
+  BTAL: {etoro_instrument_id: null, eligibility: VERIFIED_UNAVAILABLE, settlement: UNKNOWN, evidence: "API exact search (incl. .US) empty 2026-10-29/30; owner: unavailable"}
+  TECS: {etoro_instrument_id: null, eligibility: VERIFIED_UNAVAILABLE, settlement: UNKNOWN, evidence: "API exact search (incl. .US) empty 2026-10-29/30; owner: unavailable"}
+eligibility:
+  required_status: VERIFIED_TRADABLE
+  allowed_settlement: [CFD, REAL]
+  max_leverage: 1
+  allow_short: false
+schedule:
+  calendar: XNYS
+  timezone: America/New_York
+  decision_time: "16:50"
+  decision_deadline: "09:15"
+  execution: next_regular_session_open     # source: market_on_open orders
+  execution_delay_minutes: 1
+  execution_window_minutes: 60
+  missed_policy: skip
+allocation:
+  capital_fraction: 1.0
+  cash_buffer_pct: 0.0                      # source: no buffer
+rebalancing:
+  min_order_usd: 10
+  min_order_pct_nav: 0.0                    # source: minimum_order_margin_portfolio_percentage = 0
+  liquidate_non_targets: true
+risk:
+  max_gross_exposure: 1.0
+  max_instrument_weight: 1.0              # the source has no per-instrument cap
+execution:
+  mode: shadow
+  order_type: market
+  sequencing: sell_then_buy
+logging:
+  level: INFO
+  alerts: [discrepancy, halt, missed_cycle, unknown_order, external_activity, decision]
+settings:
+  crash_entry: -0.10
+  crash_exit: -0.04
+  crash_lookback: 10
+  crash_gross: 0.5
+  sleeve_weight: 0.25

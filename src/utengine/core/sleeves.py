@@ -503,6 +503,93 @@ def reallocation_preview(db, new_weights: dict, val: dict, now: str) -> dict:
     return {"preview_hash": h, **body}
 
 
+def restructure_preview(db, new_weights: dict, val: dict, specs: dict, registry: dict, now: str) -> dict:
+    """A NEW portfolio activation inside the same database: sleeves may be added or retired (e.g. the 50/50 portfolio
+    -> one 100% sleeve). Only cash moves: a retiring sleeve must hold no units, and nothing may be in flight
+    (unresolved intents, reserved opens). The ledger, decisions and audit history of every sleeve are kept; a retired
+    sleeve simply ends at zero cash. No broker order is created; a new sleeve starts with fresh strategy state, so its
+    first decision is a full acquisition from its cash."""
+    cur = weights(db)
+    if not cur:
+        raise EngineError("no multi-strategy portfolio is active")
+    if abs(sum(new_weights.values()) - 1.0) > 1e-9 or any(v <= 0 for v in new_weights.values()):
+        raise EngineError("new weights must be > 0 and sum to 1")
+    for sid in new_weights:
+        spec = specs.get(sid)
+        if spec is None or not spec["enabled"]:
+            raise EngineError(f"{sid} has no enabled strategy YAML")
+        if registry[spec["implementation"]].status != "AVAILABLE":
+            raise EngineError(f"{sid}: implementation unavailable")
+    if not val["complete"]:
+        raise EngineError("sleeve equity is incomplete (missing broker values); restructure refused")
+    bal = balances(db)
+    retired = sorted(s for s in cur if s not in new_weights)
+    held = {s: bal.get(s, {}).get("units") for s in retired if bal.get(s, {}).get("units")}
+    if held:
+        raise EngineError(f"retiring sleeve(s) still hold units {held}: they must be sold by their own strategy first")
+    if any(abs(v) > CASH_TOL for v in reserved(db).values()):
+        raise EngineError("opens are in flight (reserved cash); restructure refused")
+    if db.one(f"SELECT 1 FROM intents WHERE status IN ({','.join('?' * len(UNRESOLVED))})", tuple(UNRESOLVED)):
+        raise EngineError("an order intent is unresolved; restructure refused")
+    if abs(bal.get(UNALLOCATED, {"cash": 0.0})["cash"]) > CASH_TOL:
+        raise EngineError("the unallocated pool is not empty; allocate it first")
+    union = sorted(set(cur) | set(new_weights))
+    eq = {s: (val["sleeves"][s]["equity"] if s in val["sleeves"] else 0.0) for s in union}
+    tot = sum(eq.values())
+    transfers = {s: round(new_weights.get(s, 0.0) * tot - eq[s], 6) for s in union}
+    body = {"kind": "RESTRUCTURE", "from_weights": cur, "to_weights": dict(new_weights), "retired": retired,
+            "added": sorted(s for s in new_weights if s not in cur), "equity": eq, "transfers": transfers,
+            "strategies": {s: {"fingerprint": specs[s]["fingerprint"], "version": specs[s]["version"],
+                               "module_sha256": registry[specs[s]["implementation"]].source_sha256}
+                           for s in new_weights},
+            "created_at": now,
+            "state": fingerprint({s: (v["cash"], v["holdings_value"]) for s, v in val["sleeves"].items()})}
+    h = fingerprint(body)[7:23]
+    db.put(f"restructure_preview:{h}", body)
+    db.audit("RESTRUCTURE_PREVIEWED", {"hash": h, **body}, ts=now)
+    return {"preview_hash": h, **body}
+
+
+def restructure(db, preview_hash: str, approved_by: str, val: dict, now: str) -> dict:
+    if not approved_by.strip():
+        raise EngineError("--approved-by is required")
+    body = db.get(f"restructure_preview:{preview_hash}")
+    if not body or body.get("applied"):
+        raise EngineError(f"no unapplied restructure preview {preview_hash}")
+    if dt.datetime.fromisoformat(now) - dt.datetime.fromisoformat(body["created_at"]) > REALLOC_TTL:
+        raise EngineError("restructure preview expired; preview again")
+    state = fingerprint({s: (v["cash"], v["holdings_value"]) for s, v in val["sleeves"].items()})
+    if state != body["state"] or weights(db) != body["from_weights"]:
+        raise EngineError("sleeve state changed since the preview; preview again")
+    bal = balances(db)
+    if any(bal.get(s, {}).get("units") for s in body["retired"]):
+        raise EngineError("a retiring sleeve holds units; preview again")
+    give = {s: -x for s, x in body["transfers"].items() if x < 0}
+    get = {s: x for s, x in body["transfers"].items() if x > 0}
+    amt = round(min(sum(give.values()), sum(get.values())), 6)
+    ref = f"restructure:{preview_hash}"
+    with db.tx():
+        if amt > 0:
+            for s, a in split(amt, give, 6).items():
+                post(db, s, "REALLOC_OUT", now, ref=ref, cash=-a, detail={"approved_by": approved_by})
+            for s, a in split(amt, get, 6).items():
+                post(db, s, "REALLOC_IN", now, ref=ref, cash=a, detail={"approved_by": approved_by})
+        rec = portfolio(db)
+        history = list(rec.get("history", []))
+        history.append({"sleeves": rec["sleeves"], "strategies": rec["strategies"], "until": now,
+                        "replaced_by": ref, "approved_by": approved_by})
+        rec["sleeves"] = [{"strategy": s, "weight": body["to_weights"][s]} for s in sorted(body["to_weights"])]
+        rec["strategies"] = {s: rec["strategies"].get(s) or body["strategies"][s] for s in body["to_weights"]}
+        rec["history"] = history
+        rec["restructured_at"], rec["restructured_by"] = now, approved_by
+        db.put("portfolio", rec)
+        db.put(f"restructure_preview:{preview_hash}", {**body, "applied": now})
+        db.audit("PORTFOLIO_RESTRUCTURED", {"hash": preview_hash, "amount": amt, "from_weights": body["from_weights"],
+                                            "to_weights": body["to_weights"], "retired": body["retired"],
+                                            "added": body["added"], "approved_by": approved_by}, ts=now)
+    return {"status": "APPLIED", "amount": amt, "weights": body["to_weights"], "retired": body["retired"]}
+
+
 def reallocate(db, preview_hash: str, approved_by: str, val: dict, now: str) -> dict:
     if not approved_by.strip():
         raise EngineError("--approved-by is required")
