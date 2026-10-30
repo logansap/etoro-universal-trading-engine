@@ -81,10 +81,10 @@ class TradingEngine:
         # UTE_LOG_DIR keeps logs outside the state directory (VPS: /home/ute/logs); default <home>/logs
         self.log = JsonLog(pathlib.Path(os.environ.get("UTE_LOG_DIR") or self.home / "logs") / "engine.jsonl",
                            Redactor(self.cfg["broker"]["credentials_env"].values(), env))
-        self.auto_sim_prices = broker is None and self.mode == "simulation"
+        self.auto_sim_prices = broker is None and self.mode in ("simulation", "supervised_simulation")
         if broker is not None:
             self.broker = broker
-        elif self.mode == "simulation":
+        elif self.mode in ("simulation", "supervised_simulation"):
             from ..brokers.simulated import SimulatedBroker
             self.broker = SimulatedBroker(self.home / "sim_broker.json", instruments=self.instrument_symbols(),
                                           clock=self.clock)
@@ -94,9 +94,14 @@ class TradingEngine:
         self.id_to_symbol = {iid: s for iid, s in self.instrument_symbols().items()}
         if hasattr(self.broker, "symbols"):
             self.broker.symbols.update(self.id_to_symbol)
-        self.writer = obtain_writer(self.mode, self.broker)
+        self.writer = obtain_writer(self.mode, self.broker, authorize=lambda: self._supervised_live_writer(env))
         self.bars = bar_store or self._bar_store()
         self.executor = Executor(self.db, self.broker, self.writer, self.cfg, self.mode, self.clock, sleep)
+        from .supervision import is_supervised
+        if is_supervised(self.mode):
+            from . import supervision
+            self.executor.supervisor = lambda row, snap: supervision.check(
+                self.db, self.cfg, self.home, row, snap, self.broker.quotes, self.now())
         self.multi = is_multi(self.cfg)
         if self.multi:
             missing = [s["strategy"] for s in self.cfg["portfolio"]["sleeves"] if s["strategy"] not in self.specs]
@@ -116,6 +121,37 @@ class TradingEngine:
             d = pathlib.Path(md["csv_dir"])
             return CsvBarStore(d if d.is_absolute() else pathlib.Path(self.cfg["_path"]).parent.parent / d)
         return YahooChartBarStore()
+
+    def _supervised_live_writer(self, env):
+        """The eToro order writer for runtime.mode=supervised_live, constructed ONLY through every pilot gate
+        (security.authorize_supervised). Reads keep using the READ-ONLY key; this writer holds the trading key."""
+        import json as _json
+        import uuid as _uuid
+        from ..brokers.etoro import BASE, UrllibTransport
+        from ..brokers.etoro_live import EtoroLiveWriter
+        from .errors import LiveExecutionNotAvailable
+        from .security import TRADING_KEY_ENV, authorize_supervised
+        from .supervision import kill_switch_paths
+        from .takeover import release_id
+        env = os.environ if env is None else env
+        tr = UrllibTransport(self.cfg["broker"]["request_timeout_seconds"])
+
+        def scope_probe(api, user):                    # one GET; the trading key never reads account data
+            st, body = tr("GET", BASE + "/api/v1/me", {"x-api-key": api, "x-user-key": user,
+                                                       "x-request-id": str(_uuid.uuid4())}, None)
+            if st >= 400:
+                raise LiveExecutionNotAvailable(f"trading key check: GET /api/v1/me -> HTTP {st}")
+            me = _json.loads(body.decode("utf-8")) if body else {}
+            return me.get("scopes") if isinstance(me, dict) else None
+
+        auth = authorize_supervised(release_sha=release_id(), config=self.cfg,
+                                    approval_path=self.cfg["pilot"]["approval_file"],
+                                    kill_switch_paths=kill_switch_paths(self.cfg, self.home), env=env,
+                                    now=self.now(), scope_probe=scope_probe)
+        self.db.audit("SUPERVISED_WRITER_AUTHORIZED", {"release_sha": auth.release_sha, "approved_by": auth.approved_by,
+                                                       "expires_at": auth.expires_at}, ts=self.nows())
+        return EtoroLiveWriter(transport=tr, authorization=auth, api_key=env[TRADING_KEY_ENV[0]],
+                               user_key=env[TRADING_KEY_ENV[1]])
 
     def instrument_symbols(self) -> dict:
         out = {}

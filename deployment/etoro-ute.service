@@ -20,6 +20,9 @@ Environment=UTE_BACKUP_DIR=/home/ute/backups/nightly
 Environment=UTE_CONFIG=/etc/etoro-ute/engine.yaml
 # owner-provisioned READ-ONLY eToro key (file mode 0640 root:ute); absent -> the engine fails closed
 EnvironmentFile=-/etc/etoro-ute/readonly-credentials.env
+# pilot release only: the NEW trading key (UTE_ETORO_TRADING_*), used by runtime.mode=supervised_live; never loaded by
+# the dashboard or any other unit
+EnvironmentFile=-/etc/etoro-ute/trading-credentials.env
 # optional: UTE_ALERT_WEBHOOK_URL=..., UTE_BACKUP_OFFSITE_TARGET=... (0640 root:ute)
 EnvironmentFile=-/etc/etoro-ute/ops.env
 ExecStartPre=/home/ute/venv/bin/trading-engine config validate

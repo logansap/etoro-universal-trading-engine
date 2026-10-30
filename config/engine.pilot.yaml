@@ -1,0 +1,113 @@
+# eToro Universal Trading Engine -- SUPERVISED LIVE PILOT configuration (pilot release 0.10.0a1 only).
+# 100% QC_529_ETORO_RESTRICTED (11 instruments, unavailable target weights in cash), one sleeve. Every order needs a
+# human approval (`trading-engine orders approve`); hard limits below are checked when an order would be sent.
+# THE LIMITS ARE OPERATIONAL, NOT LOSS GUARANTEES: overnight gaps, leveraged-ETF moves and execution failures can
+# lose more than any stop value. Nothing here enables trading by itself: supervised_live also needs the owner
+# approval file bound to this release + config, a NEW trading key (UTE_ETORO_TRADING_*), the forbidden-key file with
+# the old Gold Miner key hash, a trade.real write scope, and no kill switch (core/security.authorize_supervised).
+schema_version: 1
+engine:
+  instance_id: ute-pilot-p1
+  description: "SUPERVISED LIVE PILOT P1: 100% #529 eToro-restricted (11), per-order approval"
+broker:
+  name: etoro
+  access: live_read_only            # the eToro adapter has no write methods
+  api_base: https://public-api.etoro.com
+  credentials_env:                  # NAMES of environment variables (owner-provisioned READ-ONLY key); never values
+    api_key: UTE_ETORO_READONLY_API_KEY
+    user_key: UTE_ETORO_READONLY_USER_KEY
+  request_timeout_seconds: 10
+account:
+  ownership: exclusive              # all broker cash belongs to this engine; foreign positions are excluded
+  equity_source: broker
+  base_currency: USD
+  deposit_detection: automatic
+  unknown_balance_policy: halt
+  cash_tolerance_usd: 0.05
+  pre_existing_positions: exclude_and_report
+  external_trade_policy: halt
+  max_broker_state_age_seconds: 300
+runtime:
+  mode: supervised_live             # pilot: per-order human approval (autonomous `live` is refused)
+  initial_strategy: QC_529_ETORO_RESTRICTED   # used ONLY at the first start of an empty database
+  strategies_dir: strategies
+  cycle_interval_seconds: 60
+security:
+  live_execution_enabled: false
+  approvals_required: true
+reconciliation:
+  before_decision: true
+  before_execution: true
+  after_execution: true
+  after_restart: true
+  order_poll_seconds: 2
+  order_poll_attempts: 15
+risk:
+  max_gross_exposure: 1.0
+  max_instrument_weight: 1.0
+  max_leverage: 1
+  allow_short: false
+  daily_loss_halt_pct: 0.20         # NEW_EXPOSURE halt (never a liquidation); 3x ETFs move 10%+ in a day
+  drawdown_halt_pct: 0.50
+  max_single_order_usd: 25000       # catastrophic-bug backstop, not a sizing rule
+  min_order_usd: 10                 # eToro minimum position
+  max_quote_age_seconds: 120
+  max_spread_bp: 30.0              # pilot gate: an open with a wider broker quote is blocked (TECL observed 14.8 bp)
+  halt_allows_reductions: false
+market_data:
+  provider: yahoo                   # free Yahoo chart endpoint for shadow decisions
+  lookback_sessions: 760
+  simulation_half_spread_bp: 2.0
+monitoring:
+  heartbeat_stale_seconds: 300
+notifications:
+  webhook_url_env: UTE_ALERT_WEBHOOK_URL   # NAME of the env var holding the webhook URL (unset = outbox file only)
+  min_severity: WARNING
+  dedupe_minutes: 60
+  timeout_seconds: 10
+  max_attempts: 10
+backup:
+  local_dir: backups                # relative to UTE_HOME
+  retain: 14
+  offsite_method: none              # none | copy (remote mounted at /mnt/etoro-ute-offsite) | rsync (user@host:path); owner approval
+  offsite_target_env: UTE_BACKUP_OFFSITE_TARGET
+calendar:
+  exchange: XNYS
+  timezone: America/New_York
+  unscheduled_closures: ["2025-01-09"]
+capital:
+  ownership: full_designated_account      # after an approved takeover the engine owns 100% of this trading account
+  sizing_source: verified_broker_equity   # broker cash + broker-valued positions only; never a typed budget
+  manual_capital_amount: null             # refused if set
+  funding_policy: automatic_evidence_backed   # evidence-matched deposits allocated automatically; else suspense
+  external_flow_allocation: proportional  # verified net new capital split by the sleeve weights
+  preserve_strategy_cash: true            # a deposit never redistributes a sleeve's existing profits or cash
+portfolio:
+  mode: multi_strategy              # used at the FIRST start only; later changes via `portfolio reallocate`
+  sleeves:
+    - strategy: QC_529_ETORO_RESTRICTED
+      weight: 1.0
+  funding_policy: proportional      # deposits / withdrawals split by sleeve weight
+  rebalance_policy: strategy_independent
+  aggregate_risk: enforced          # engine risk limits apply to the combined broker exposure
+  internal_crossing: true           # opposite sleeve trades in one instrument are transferred, not traded
+takeover:
+  known_writers:
+    - name: gold-miner
+      description: "live Gold Miner #687 engine on the VPS (owns the GDX CFD short); disabled only by the owner"
+  approval_ttl_hours: 4
+  price_tolerance_pct: 0.02
+  close_slippage_bp: 25
+  investable_reserve_pct: 0.02
+  financing_annual_rate_observed:
+    GDX: 0.1005                     # observed on Gold Miner's x5 GDX CFD (2026-08/09)
+pilot:                              # P1 limits (owner proposal 2026-10-30); OPERATIONAL limits, not loss guarantees
+  max_order_usd: 250.0
+  max_gross_usd: 500.0              # engine exposure incl. pending opens, checked when an open would be sent
+  max_orders_per_session: 8
+  daily_loss_stop_usd: 50.0         # no new exposure for the rest of the session
+  cumulative_loss_stop_usd: 100.0   # halt ALL; human decision required
+  approval_ttl_minutes: 15
+  approval_file: /etc/etoro-ute/pilot-approval.json
+  forbidden_hashes_file: /etc/etoro-ute/forbidden-user-key.sha256
+  kill_switch_file: /etc/etoro-ute/KILL_SWITCH

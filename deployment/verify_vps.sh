@@ -10,14 +10,16 @@
 # Exit 0 = every check passed (WARN/INFO lines do not fail); 1 = at least one FAIL.
 set -uo pipefail
 . "$(dirname "$(readlink -f "$0")")/layout.sh"
-EXPECT="" PROBE=0
+EXPECT="" PROBE=0 PILOT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --expect-commit) EXPECT=${2:-}; shift 2;;
     --probe) PROBE=1; shift;;
-    *) echo "usage: verify_vps.sh [--expect-commit <sha>] [--probe]"; exit 2;;
+    --pilot) PILOT=1; shift;;     # the owner switched this host to the SUPERVISED live pilot (pilot release only)
+    *) echo "usage: verify_vps.sh [--expect-commit <sha>] [--probe] [--pilot]"; exit 2;;
   esac
 done
+MODE_EXPECTED=shadow; [ $PILOT -eq 1 ] && MODE_EXPECTED=supervised_live
 [ "$(id -u)" -eq 0 ] || { echo "run as root (read-only checks need to read /proc and run as the service user)"; exit 2; }
 F=0
 pass() { echo "PASS  $*"; }
@@ -47,7 +49,27 @@ fi
 [ -f "$UTE_DEPLOY/history.tsv" ] && info "last deployment: $(tail -1 "$UTE_DEPLOY/history.tsv" | cut -f1,2,4,8)"
 
 echo "## configuration"
-check "mode shadow" "grep -q '^  mode: shadow' $UTE_CONFIG"
+check "mode $MODE_EXPECTED" "grep -q '^  mode: $MODE_EXPECTED' $UTE_CONFIG"
+if [ $PILOT -eq 1 ]; then
+  TC=$UTE_ETC/trading-credentials.env FB=$UTE_ETC/forbidden-user-key.sha256 AP=$UTE_ETC/pilot-approval.json
+  names() { sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$1" | sort | tr '\n' ' '; }
+  hk() { sed -n "s/^$2=//p" "$1" | tail -1 | tr -d "\"'\r" | tr -d '\n' | sha256sum | cut -c1-64; }
+  if [ -f "$TC" ] && [ "$(stat -c '%a %U:%G' "$TC")" = "640 root:$UTE_USER" ] \
+     && [ "$(names "$TC")" = "UTE_ETORO_TRADING_API_KEY UTE_ETORO_TRADING_USER_KEY " ] && ! grep -q $'\r' "$TC"; then
+    pass "pilot: trading credential file root:$UTE_USER 640, exactly UTE_ETORO_TRADING_API_KEY/USER_KEY, LF"
+  else fail "pilot: trading credential file $TC missing, wrong mode, wrong names or CRLF"; fi
+  if [ -s "$FB" ]; then pass "pilot: forbidden-key file present (old Gold Miner key hash)"
+  else fail "pilot: forbidden-key file $FB missing or empty"; fi
+  if [ -f "$TC" ] && [ -s "$FB" ] && ! grep -qi "$(hk "$TC" UTE_ETORO_TRADING_USER_KEY)" "$FB" \
+     && [ "$(hk "$TC" UTE_ETORO_TRADING_USER_KEY)" != "$(hk "$UTE_CRED" UTE_ETORO_READONLY_USER_KEY)" ]; then
+    pass "pilot: trading user key is not a forbidden key and not the read-only key (compared as hashes)"
+  else fail "pilot: trading user key is FORBIDDEN, equals the read-only key, or cannot be checked"; fi
+  if [ -f "$AP" ] && python3 -c "import json,sys,datetime as d; a=json.load(open('$AP')); sys.exit(0 if d.datetime.fromisoformat(a['expires_at'])>d.datetime.now(d.timezone.utc) else 1)" 2>/dev/null; then
+    pass "pilot: owner approval file present and not expired"
+  else fail "pilot: owner approval file $AP missing or expired"; fi
+  if [ -e "$UTE_ETC/KILL_SWITCH" ] || [ -e "$UTE_DATA/KILL_SWITCH" ]; then warn "pilot: KILL SWITCH ENGAGED (no order can be sent)"
+  else info "pilot: kill switch not engaged"; fi
+fi
 check "multi-strategy sleeve portfolio configured" "grep -q '^  mode: multi_strategy' $UTE_CONFIG && grep -q '^    - strategy: ' $UTE_CONFIG"
 info "configured sleeves: $(sed -n 's/^    - strategy: //p' $UTE_CONFIG | tr '
 ' ' ')(the database record governs after the first start)"
@@ -76,8 +98,12 @@ fi
 
 echo "## engine state"
 ute_te status > "$TMP/status.json" 2>&1 || true
-check "engine reports shadow mode" "grep -q '\"mode\": \"shadow\"' $TMP/status.json"
-check "engine holds no write capability" "grep -q '\"write_capability\": false' $TMP/status.json"
+check "engine reports $MODE_EXPECTED mode" "grep -q '\"mode\": \"$MODE_EXPECTED\"' $TMP/status.json"
+if [ $PILOT -eq 1 ]; then
+  check "pilot: engine holds the supervised write capability" "grep -q '\"write_capability\": true' $TMP/status.json"
+else
+  check "engine holds no write capability" "grep -q '\"write_capability\": false' $TMP/status.json"
+fi
 ute_te verify > "$TMP/verify.json" 2>&1 || true
 check "audit chain verified" "grep -q '\"audit_chain_ok\": true' $TMP/verify.json"
 check "SQLite integrity ok" "grep -q '\"sqlite_integrity\": \"ok\"' $TMP/verify.json"

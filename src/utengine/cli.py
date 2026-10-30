@@ -106,7 +106,29 @@ def cmd_strategy(a):
     raise SystemExit(2)
 
 
+def _pilot_db(a):
+    """Operator pilot commands touch only the configuration and the database: no broker, no trading credential."""
+    from .core.supervision import is_supervised
+    from .persistence.db import DB
+    cfg = load_engine_config(a.config)
+    if not is_supervised(cfg["runtime"]["mode"]):
+        raise SystemExit("pilot commands need runtime.mode supervised_simulation or supervised_live")
+    return cfg, DB(pathlib.Path(a.home) / "engine.sqlite"), pathlib.Path(a.home)
+
+
 def cmd_orders(a):
+    if a.action in ("pending", "approve", "reject"):
+        from .core import supervision
+        cfg, db, _home = _pilot_db(a)
+        now = dt.datetime.now(dt.timezone.utc)
+        if a.action == "pending":
+            _print(supervision.pending(db))
+        elif a.action == "approve":
+            _print(supervision.approve(db, cfg, a.intent, a.approved_by, now, a.ttl_minutes))
+        else:
+            supervision.reject(db, a.intent, a.operator, a.reason, now.isoformat())
+            print(f"{a.intent} -> BLOCKED (rejected by {a.operator})")
+        return 0
     e = _engine(a)
     if a.action == "resolve":
         operator_resolve(e.db, e.broker, a.intent, a.as_status, a.operator, a.evidence, e.nows())
@@ -115,6 +137,26 @@ def cmd_orders(a):
     where = "" if a.all else "WHERE status NOT IN ('RECONCILED','SHADOW_RECORDED','ABANDONED','BLOCKED')"
     _print([dict(r) for r in e.db.q(f"SELECT intent_id, plan_id, phase, action, symbol, amount, units, position_id, "
                                      f"status, broker_order_id, mode, updated_at FROM intents {where} ORDER BY created_at")])
+    return 0
+
+
+def cmd_pilot_approval_template(a):
+    from .core.security import PILOT_APPROVAL_PHRASE
+    from .core.takeover import release_id
+    cfg = load_engine_config(a.config)
+    if cfg["runtime"]["mode"] != "supervised_live":
+        raise SystemExit("the approval binds a supervised_live configuration: install it first, then run this")
+    _print({"kind": "SUPERVISED_PILOT", "phrase": PILOT_APPROVAL_PHRASE, "release_sha": release_id(),
+            "config_fingerprint": cfg["_fingerprint"], "approved_by": "<owner name>",
+            "expires_at": "<ISO 8601 UTC, e.g. 2026-11-06T21:00:00+00:00>"})
+    return 0
+
+
+def cmd_kill_switch(a):
+    from .core import supervision
+    cfg, db, home = _pilot_db(a)
+    p = supervision.engage_kill_switch(cfg, home, a.operator, a.reason, dt.datetime.now(dt.timezone.utc).isoformat(), db)
+    print(f"KILL SWITCH ENGAGED: {p} (no order can be sent; remove the file and clear the halt to resume)")
     return 0
 
 
@@ -485,8 +527,8 @@ def cmd_restore_verify(a):
 
 def cmd_sim(a):
     e = _engine(a)
-    if e.mode != "simulation":
-        raise SystemExit("sim commands exist only in simulation mode")
+    if e.mode not in ("simulation", "supervised_simulation"):
+        raise SystemExit("sim commands exist only in simulation modes")
     if a.action == "deposit":
         e.broker.deposit(a.amount, evidence=a.evidence or "operator test deposit (simulation)")
     elif a.action == "external-open":
@@ -542,7 +584,23 @@ def build_parser():
     rs.add_argument("--as", dest="as_status", required=True, choices=["NOT_SUBMITTED", "REJECTED"])
     rs.add_argument("--operator", required=True)
     rs.add_argument("--evidence", required=True)
+    os_.add_parser("pending", help="supervised pilot: intents waiting for a human approval")
+    oa = os_.add_parser("approve", help="supervised pilot: approve ONE intent (bound to its exact content)")
+    oa.add_argument("--intent", required=True)
+    oa.add_argument("--approved-by", required=True)
+    oa.add_argument("--ttl-minutes", type=float, default=None)
+    orj = os_.add_parser("reject", help="supervised pilot: reject ONE intent (it becomes BLOCKED)")
+    orj.add_argument("--intent", required=True)
+    orj.add_argument("--operator", required=True)
+    orj.add_argument("--reason", required=True)
     o.set_defaults(fn=cmd_orders)
+    ks = sub.add_parser("kill-switch", help="supervised pilot: engage the kill switch (file + halt ALL)")
+    ks.add_argument("--operator", required=True)
+    ks.add_argument("--reason", required=True)
+    ks.set_defaults(fn=cmd_kill_switch)
+    pt = sub.add_parser("pilot-approval-template", help="print the owner approval file skeleton for THIS release and "
+                                                         "configuration (the owner fills approved_by and expires_at)")
+    pt.set_defaults(fn=cmd_pilot_approval_template)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     hp = sub.add_parser("health")
     hp.add_argument("--notify", action="store_true", help="alert on a stale heartbeat and flush notifications")

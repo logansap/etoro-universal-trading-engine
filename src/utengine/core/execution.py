@@ -42,6 +42,7 @@ class Executor:
         self.db, self.reader, self.writer, self.cfg, self.mode = db, reader, writer, cfg, mode
         self.clock, self.sleep = clock, sleep
         self.fill_hook = None             # multi-strategy: sleeves.on_fill(db, row, info, now)
+        self.supervisor = None            # supervised pilot: fn(row, snapshot) -> (None|'hold'|'block', reason)
         rc = cfg["reconciliation"]
         self.poll_s, self.poll_n = rc["order_poll_seconds"], rc["order_poll_attempts"]
 
@@ -92,6 +93,13 @@ class Executor:
             out["status"] = "HALTED_PHASE1"
             return out
         p2 = [l for l in legs if l.phase == 2]
+        if "AWAITING_APPROVAL" in out["phase1"]:
+            out["status"] = "AWAITING_APPROVAL"          # sell-then-buy: no open before every close is sent
+            return out
+        if p2 and "BLOCKED" in out["phase1"]:
+            out["status"] = "PHASE1_BLOCKED"
+            out["notes"].append("a close was blocked by a pilot limit; opens not started")
+            return out
         if p2 and "REJECTED" in out["phase1"]:
             # sell-then-buy: the buys were sized on cash the rejected close should have released
             out["status"] = "PHASE1_REJECTED"
@@ -120,6 +128,8 @@ class Executor:
                 halts.raise_halt(self.db, "UNRESOLVED_ORDER", "ALL", f"plan {plan_id}: an open is unresolved",
                                  self.now())
                 out["status"] = "HALTED_PHASE2"
+        if out["status"] == "DONE" and "AWAITING_APPROVAL" in out["phase2"]:
+            out["status"] = "AWAITING_APPROVAL"
         if out["status"] == "DONE" and "REJECTED" in out["phase1"] + out["phase2"]:
             out["status"] = "DONE_WITH_REJECTIONS"
             self.db.alert("WARNING", "ORDER_REJECTED", f"plan {plan_id}: broker rejected a leg (not retried)",
@@ -147,6 +157,16 @@ class Executor:
             return "ABANDONED"
         pre = {"positions": {p.position_id: p.units for p in snap.positions},
                "pending": [o.order_id for o in snap.pending_orders], "credit": snap.credit, "at": snap.as_of}
+        if self.supervisor is not None:
+            kind, why = self.supervisor(row, snap)
+            if kind == "block":
+                transition(self.db, iid, "BLOCKED", self.now(), {"reason": f"pilot: {why}"})
+                return "BLOCKED"
+            if kind == "hold":
+                if self.db.get(f"held:{iid}") != why:          # audited once per distinct reason, not every cycle
+                    self.db.put(f"held:{iid}", why)
+                    self.db.audit("ORDER_HELD", {"intent_id": iid, "reason": why}, ts=self.now())
+                return "AWAITING_APPROVAL"
         if row["action"] != "OPEN":
             queued = [o.order_id for o in snap.pending_orders
                       if o.kind == "close" and str(row["position_id"]) in o.position_ids]
@@ -156,6 +176,9 @@ class Executor:
                 return "ABANDONED"
         transition(self.db, iid, "SUBMITTING", self.now(), {"pre_submit_snapshot": snap.raw_sha256[:16]},
                    pre_submit=pre)
+        if self.supervisor is not None:
+            from .supervision import consume
+            consume(self.db, iid, self.now())             # an approval sends at most one request, ever
         try:
             if row["action"] == "OPEN":
                 res = self.writer.submit_open(row["instrument_id"], row["amount"], is_buy=True, leverage=1,

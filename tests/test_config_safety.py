@@ -123,8 +123,16 @@ def test_live_order_code_is_isolated_and_never_constructed():
     writers = sorted(p.name for p in src.rglob("*.py") if "(BrokerReader, BrokerWriter)" in p.read_text(encoding="utf-8")
                      or "(BrokerWriter)" in p.read_text(encoding="utf-8"))
     assert writers == ["etoro_live.py", "simulated.py"]
-    users = [p.name for p in src.rglob("*.py") if "EtoroLiveWriter" in p.read_text(encoding="utf-8")]
-    assert users == ["etoro_live.py"], users
+    users = sorted(p.name for p in src.rglob("*.py") if "EtoroLiveWriter" in p.read_text(encoding="utf-8"))
+    # PILOT RELEASE: exactly one constructor call site, engine._supervised_live_writer, and it constructs the
+    # writer only after authorize_supervised() returned (the authorization object is passed in)
+    assert users == ["engine.py", "etoro_live.py"], users
+    eng = (src / "core" / "engine.py").read_text(encoding="utf-8")
+    assert eng.count("EtoroLiveWriter(") == 1
+    body = eng[eng.index("def _supervised_live_writer"):eng.index("def instrument_symbols")]
+    assert "EtoroLiveWriter(" in body and body.index("authorize_supervised(release_sha") < body.index(
+        "EtoroLiveWriter(") and "authorization=auth" in body
+    assert eng.count("_supervised_live_writer(") == 2        # its definition and the single obtain_writer closure
 
 
 def test_no_secrets_in_repository():

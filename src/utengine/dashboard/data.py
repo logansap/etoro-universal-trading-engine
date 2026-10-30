@@ -319,7 +319,7 @@ class Data:
             gm = retirement.readiness(db, self.mode == "simulation")
             exclusive = db.get("account_takeover")
             blockers = []
-            if self.mode != "simulation" and not (key and key.get("status") == "READ_ONLY"):
+            if self.mode not in ("simulation", "supervised_simulation") and not (key and key.get("status") == "READ_ONLY"):
                 blockers.append("read-only eToro key for this engine not verified in this state directory (last "
                                 f"check: {(key or {}).get('status', 'none recorded')})")
             if gm["steps"]["freeze"]["status"] != "DONE":

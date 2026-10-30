@@ -27,7 +27,7 @@ from .scheduler import Scheduler
 from .strategy_api import StrategyDecision
 from ..strategy_modules import REGISTRY
 
-RESUMABLE = ("PLANNED", "HALTED_PHASE1", "HALTED_PHASE2", "HALTED_RECONCILIATION")
+RESUMABLE = ("PLANNED", "HALTED_PHASE1", "HALTED_PHASE2", "HALTED_RECONCILIATION", "AWAITING_APPROVAL")
 
 
 def _sleeve_blocked(e, sid: str, drift: dict, for_execution: bool) -> str | None:
@@ -256,6 +256,9 @@ def _resume(e, plan_id: str, now: dt.datetime) -> dict:
             if x["status"] in ("FILLED", "REJECTED", "CANCELED", "NOT_SUBMITTED"):
                 transition(e.db, x["intent_id"], "RECONCILED", e.nows(), {"snapshot": after.snapshot_id})
     e.db.x("UPDATE plans SET status=? WHERE plan_id=?", (res["status"], plan_id))
+    if res["status"] == "DONE" and not [b for b, _w in plan.get("blocked", []) if b.get("action") == "OPEN"]:
+        for s in sorted({x[0] for leg in plan["legs"] for x in (leg.get("sleeves") or [])}):
+            sleeves.consume_catch_up(e.db, s, plan_id, e.nows())
     return {**res, "resumed": True}
 
 

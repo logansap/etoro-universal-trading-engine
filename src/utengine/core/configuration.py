@@ -124,9 +124,11 @@ def D(required=True, **schema) -> F:
 def _mode_check(v):
     if v == "live":
         raise LiveExecutionNotAvailable(
-            "runtime.mode=live is refused: live order submission is NOT IMPLEMENTED in this release and can never "
-            "be enabled by a configuration file (docs/RELEASE_READINESS.md, 'Future activation').")
-    return None if v in ("simulation", "shadow") else f"{v!r} not allowed; choices: ['simulation', 'shadow']"
+            "runtime.mode=live is refused: autonomous live order submission can never be enabled by a configuration "
+            "file (docs/RELEASE_READINESS.md, 'Future activation'). The pilot release offers supervised_live only.")
+    from .security import SUPERVISED_PILOT_RELEASE
+    ok = ("simulation", "shadow") + (("supervised_simulation", "supervised_live") if SUPERVISED_PILOT_RELEASE else ())
+    return None if v in ok else f"{v!r} not allowed; choices: {list(ok)}"
 
 
 def _live_flag_check(v):
@@ -222,6 +224,17 @@ ENGINE_SCHEMA = D(
               external_flow_allocation=F("str", choices=("proportional",)),
               preserve_strategy_cash=F("bool", choices=(True,))),
     # full-account takeover preview / state machine (docs/ACCOUNT_TAKEOVER_PREVIEW.md); absent = defaults
+    pilot=D(required=False,                 # supervised pilot limits (pilot release; docs/LIVE_PILOT_DESIGN.md)
+            max_order_usd=F("float", lo=10.0, hi=100000.0),
+            max_gross_usd=F("float", lo=10.0, hi=1000000.0),
+            max_orders_per_session=F("int", lo=1, hi=100),
+            daily_loss_stop_usd=F("float", lo=1.0, hi=1000000.0),
+            cumulative_loss_stop_usd=F("float", lo=1.0, hi=1000000.0),
+            approval_ttl_minutes=F("float", lo=1.0, hi=60.0),
+            approval_file=F("str"),
+            forbidden_hashes_file=F("str"),
+            kill_switch_file=F("str", required=False),
+            ),
     takeover=D(required=False,
                known_writers=F("list", item=D(name=F("str"), description=F("str"))),
                approval_ttl_hours=F("float", lo=0.25, hi=72.0),
@@ -323,6 +336,17 @@ def load_engine_config(path: str | pathlib.Path) -> dict:
         raise ConfigError("runtime.mode=simulation requires broker.name=simulated")
     if mode == "shadow" and b["name"] != "etoro":
         raise ConfigError("runtime.mode=shadow requires broker.name=etoro (read-only)")
+    if mode == "supervised_simulation" and b["name"] != "simulated":
+        raise ConfigError("runtime.mode=supervised_simulation requires broker.name=simulated")
+    if mode == "supervised_live" and b["name"] != "etoro":
+        raise ConfigError("runtime.mode=supervised_live requires broker.name=etoro (reads stay on the read-only key)")
+    if mode in ("supervised_simulation", "supervised_live"):
+        if not cfg.get("pilot"):
+            raise ConfigError(f"runtime.mode={mode} requires a pilot section (hard limits)")
+        if not (cfg.get("portfolio") and cfg["portfolio"]["mode"] == "multi_strategy"):
+            raise ConfigError(f"runtime.mode={mode} requires portfolio.mode multi_strategy (one 100% sleeve)")
+        if cfg["pilot"]["max_order_usd"] > cfg["pilot"]["max_gross_usd"]:
+            raise ConfigError("pilot.max_order_usd must not exceed pilot.max_gross_usd")
     pf = cfg.get("portfolio")
     if pf and pf["mode"] == "multi_strategy":
         ids = [s["strategy"] for s in pf["sleeves"]]

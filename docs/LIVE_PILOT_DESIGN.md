@@ -5,11 +5,13 @@
 - **Account:** one eToro account the engine owns exclusively.
 - **Approval:** every order needs explicit human approval.
 
-**Status:** this is a design only.
-- This release has no live writer path: `LIVE_RELEASE_ENABLED=False` is a code constant, `runtime.mode: live` is
-  refused, and the eToro writer is never constructed.
-- Building the pilot is a **separate, reviewed release**, with its own rehearsal and the owner's written approval.
-- Nothing here may be enabled by configuration alone.
+**Status:**
+- **Implemented** in the separately versioned **pilot release 0.10.0a1** (branch `pilot/supervised-live`), as
+  runtime mode `supervised_live`.
+- Operation: `docs/SUPERVISED_PILOT_RUNBOOK.md`. Code: `core/supervision.py` and `core/security.authorize_supervised`.
+- **The SHADOW release (v0.9.0rc3) is unchanged and still has no live writer path.**
+- **Autonomous live is refused in both releases:** `LIVE_RELEASE_ENABLED=False`, `mode: live` refused.
+- **Enabling the pilot on a host needs every owner gate** in the runbook, plus the owner's explicit go.
 
 ## Principles
 
