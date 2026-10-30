@@ -142,6 +142,35 @@ P
   DPID=$(systemctl show -p MainPID --value etoro-ute-dashboard)
   check "dashboard process: no broker credential variable, /home/engine invisible" "! tr '\\0' '\\n' < /proc/$DPID/environ | grep -q 'ETORO' && [ ! -e /proc/$DPID/root/home/engine ]"
 
+
+  say "## E2. HTTPS dashboard (GitOps): one-time bootstrap replacing a previous site on the same name"
+  DH=ute-rehearsal.test
+  rm -f /etc/nginx/sites-enabled/default
+  mkdir -p /var/www/mock-gm /var/www/letsencrypt "/etc/letsencrypt/live/$DH"
+  echo "MOCK GOLD MINER DASHBOARD" > /var/www/mock-gm/index.html
+  printf 'server {\n  listen 80 default_server;\n  server_name %s;\n  root /var/www/mock-gm;\n}\n' "$DH" > /etc/nginx/sites-available/mock-gm-site.conf
+  ln -sf /etc/nginx/sites-available/mock-gm-site.conf /etc/nginx/sites-enabled/mock-gm-site.conf
+  openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=$DH" -keyout "/etc/letsencrypt/live/$DH/privkey.pem" \
+    -out "/etc/letsencrypt/live/$DH/fullchain.pem" >/dev/null 2>&1
+  htpasswd -bc /root/rehearsal.htpasswd owner basic-pw-0001 >/dev/null 2>&1
+  systemctl enable --now nginx >/dev/null 2>&1
+  check "before: the previous site serves the name" "curl -s --resolve $DH:80:127.0.0.1 http://$DH/ | grep -q MOCK"
+  EPID=$(systemctl show -p MainPID --value etoro-ute)
+  bash "$UTE_CURRENT/deployment/https_dashboard.sh" bootstrap --host $DH --htpasswd-from /root/rehearsal.htpasswd \
+    --replace-site mock-gm-site.conf > /rehearsal/https_bootstrap.out 2>&1; RC=$?
+  check "bootstrap: exit 0, host.env root:ute 640, own basic-auth copy, previous site link removed (file kept)" "[ $RC = 0 ] && [ \"\$(stat -c '%a %U:%G' /etc/etoro-ute/host.env)\" = '640 root:ute' ] && [ -s /etc/nginx/ute-dashboard.htpasswd ] && [ ! -e /etc/nginx/sites-enabled/mock-gm-site.conf ] && [ -f /etc/nginx/sites-available/mock-gm-site.conf ]"
+  check "bootstrap did not restart the trading engine" "[ \$(systemctl show -p MainPID --value etoro-ute) = $EPID ]"
+  H="--resolve $DH:80:127.0.0.1 --resolve $DH:443:127.0.0.1 -k -s"
+  check "http -> https 301; https without basic auth 401 (page and data)" "[ \$(curl $H -o /dev/null -w '%{http_code}' http://$DH/) = 301 ] && [ \$(curl $H -o /dev/null -w '%{http_code}' https://$DH/) = 401 ] && [ \$(curl $H -o /dev/null -w '%{http_code}' https://$DH/api/overview) = 401 ]"
+  rm -f /rehearsal/cj.txt
+  curl $H -u owner:basic-pw-0001 -c /rehearsal/cj.txt -D /rehearsal/https_login_headers.txt -o /dev/null -X POST -d 'password=rehearsal-dashboard-pw-0001' https://$DH/login
+  check "basic auth alone gives no data (engine session required: 401)" "[ \$(curl $H -u owner:basic-pw-0001 -o /dev/null -w '%{http_code}' https://$DH/api/overview) = 401 ]"
+  check "full HTTPS chain: basic auth + engine login -> data 200; session cookie HttpOnly, SameSite=Strict, Secure" "[ \$(curl $H -u owner:basic-pw-0001 -b /rehearsal/cj.txt -o /dev/null -w '%{http_code}' https://$DH/api/overview) = 200 ] && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'secure' && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'httponly' && grep -i '^set-cookie' /rehearsal/https_login_headers.txt | grep -qi 'samesite=strict'"
+  check "other methods refused; dotfiles refused; the basic-auth credential is not forwarded" "[ \$(curl $H -u owner:basic-pw-0001 -o /dev/null -w '%{http_code}' -X DELETE https://$DH/api/overview) = 403 ] && [ \$(curl $H -u owner:basic-pw-0001 -o /dev/null -w '%{http_code}' https://$DH/.env) = 403 ] && grep -q 'proxy_set_header Authorization \"\"' /etc/nginx/ute-dashboard-proxy.inc"
+  check "the engine dashboard stays loopback-only" "! ss -ltn | grep -qE '(0.0.0.0|\*|\[::\]):8790'"
+  bash "$UTE_CURRENT/deployment/verify_vps.sh" > /rehearsal/verify_https.out 2>&1
+  check "verify_vps.sh: the https checks pass and ALL CHECKS PASSED" "grep -q 'PASS  https dashboard: no data without basic auth' /rehearsal/verify_https.out && grep -q 'ALL CHECKS PASSED' /rehearsal/verify_https.out"
+
   say "## F. guards: dirty checkout, concurrent deployment, unpublished commit"
   touch "$UTE_CHECKOUT/LOCAL_EDIT"
   check "a dirty checkout is refused (exit 2), release unchanged" "[ \$(run_sync --sha $B) = 2 ] && grep -q 'local changes' /rehearsal/sync.out && [ \$(cur) = ${A:0:12} ]"
@@ -159,6 +188,19 @@ P
   check "sync_vps.sh --ref <tag> --expect-sha B: exit 0, release B, previous = A" "[ $RC = 0 ] && [ \$(cur) = ${B:0:12} ] && [ \"\$(basename \$(readlink $UTE_CURRENT.previous))\" = ${A:0:12} ]"
   check "pre-deployment backup: root-only, checksummed, restore-verified, no credentials" "[ -n \"$BK\" ] && [ \"\$(stat -c '%U %a' $BK)\" = 'root 700' ] && (cd $BK && sha256sum -c --quiet SHA256SUMS) && grep -q '\"audit_chain_ok\": true' $BK/restore_verify.json && ! tar -tzf $BK/data-files.tar.gz | grep -qi credential && [ ! -e $BK/readonly-credentials.env ]"
   check "state carried over (audit chain verified, history kept)" "ute_te verify | grep -q '\"audit_chain_ok\": true' && [ \$(ute_te verify | python3 -c \"import json,sys; print(json.load(sys.stdin).get('audit_entries', 0))\" 2>/dev/null || echo 0) -ge $N_AUDIT ]"
+
+  check "GitOps: the update reports the dashboard site (unchanged template) in step 8b" "grep -q '8b. HTTPS dashboard site' /rehearsal/sync_update.out && grep -q 'https dashboard: unchanged' /rehearsal/sync_update.out"
+  echo "# hand edit" >> /etc/nginx/sites-available/ute-dashboard.conf
+  check "drift is reported by check (WARN, not a failure)" "bash $UTE_CURRENT/deployment/https_dashboard.sh check | grep -q 'WARN  https dashboard: nginx site differs'"
+  RC=$(run_sync --sha "$B"); cp /rehearsal/sync.out /rehearsal/sync_drift.out
+  check "GitOps: the next sync restores the site from git (applied, backup taken, nginx -t, reload)" "[ $RC = 0 ] && grep -q 'https dashboard: applied from release' /rehearsal/sync_drift.out && ! grep -q 'hand edit' /etc/nginx/sites-available/ute-dashboard.conf && ls $UTE_DEPLOY/nginx-backup-*.tar.gz >/dev/null"
+  mv /etc/nginx/ute-dashboard.htpasswd /root/htpasswd.aside
+  echo "# another edit" >> /etc/nginx/sites-available/ute-dashboard.conf
+  RC=$(run_sync --sha "$B"); cp /rehearsal/sync.out /rehearsal/sync_https_fail.out
+  check "a site that cannot be applied: engine deployed and verified, exit 6, previous site still served" "[ $RC = 6 ] && grep -q 'DASHBOARD_SITE_NOT_UPDATED' /rehearsal/sync_https_fail.out && [ \$(cur) = ${B:0:12} ]"
+  mv /root/htpasswd.aside /etc/nginx/ute-dashboard.htpasswd
+  RC=$(run_sync --sha "$B")
+  check "after the fix the next sync applies it again (exit 0)" "[ $RC = 0 ] && grep -q 'https dashboard: applied' /rehearsal/sync.out"
   check "--expect-sha mismatch is refused" "[ \$(run_sync --ref v0.0.0-rehearsal-b --expect-sha $A) = 2 ]"
   TAGOBJ=$(git -C /rehearsal/work rev-parse refs/tags/v0.0.0-rehearsal-b)       # the original tag object
   git -C /rehearsal/work tag -f -a v0.0.0-rehearsal-b -m "moved" "$C" >/dev/null && git -C /rehearsal/work push -q -f origin v0.0.0-rehearsal-b
@@ -201,6 +243,7 @@ sleep 10
 . /rehearsal/commits.env
 check "engine and dashboard started at boot on release B" "systemctl is-active --quiet etoro-ute && systemctl is-active --quiet etoro-ute-dashboard && [ \$(cur) = ${B:0:12} ]"
 check "verify_vps.sh --expect-commit B passes after boot" "bash $UTE_CURRENT/deployment/verify_vps.sh --expect-commit $B > /rehearsal/verify_boot.out"
+check "the HTTPS dashboard serves after boot (301, 401 without basic auth)" "[ \$(curl -k -s -o /dev/null -w %{http_code} --resolve ute-rehearsal.test:80:127.0.0.1 http://ute-rehearsal.test/) = 301 ] && [ \$(curl -k -s -o /dev/null -w %{http_code} --resolve ute-rehearsal.test:443:127.0.0.1 https://ute-rehearsal.test/api/overview) = 401 ]"
 check "Gold Miner untouched across the whole rehearsal (files and units)" "[ \"\$(gm_hash)\" = \"\$(cat /rehearsal/gm_hash_before)\" ] && systemctl is-active --quiet gold-miner-engine.timer"
 OUTSIDE=$(find / -xdev -user ute -not -path '/home/ute/data*' -not -path '/home/ute/logs*' -not -path '/home/ute/backups/nightly*' -not -path '/proc/*' 2>/dev/null)
 say "  files owned by ute outside /home/ute/{data,logs,backups/nightly}: ${OUTSIDE:-none}"

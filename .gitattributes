@@ -7,3 +7,4 @@ src/utengine/strategy_modules/vendor/tsr_frozen/*.py -text
 *.service text eol=lf
 *.timer text eol=lf
 Dockerfile text eol=lf
+deployment/nginx/* text eol=lf

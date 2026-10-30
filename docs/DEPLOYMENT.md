@@ -141,6 +141,54 @@ VPS and change the port in the printed URL to 18790. The link is valid for 120 s
 runuser -u ute -- /home/ute/venv/bin/trading-engine --config /etc/etoro-ute/engine.yaml --home /home/ute/data dashboard login-link
 ```
 
+## HTTPS dashboard (GitOps)
+
+The nginx site that puts the dashboard at `https://<name>/` is part of every release:
+- `deployment/nginx/ute-dashboard.conf.template`;
+- `deployment/nginx/ute-dashboard-proxy.inc`.
+
+**How it is applied:**
+- `sync_vps.sh` applies the site of the deployed commit in step 8b, after the deployment is verified.
+- It changes nginx only when the site differs from git: a new release, or a hand edit (drift).
+- Each change takes a backup of `/etc/nginx` and passes `nginx -t` before the reload.
+- On failure the previous files are restored and the deployment exits 6: the engine is deployed, the old site keeps
+  serving.
+- The trading engine is never restarted for it.
+
+**The only host values,** the name and the certificate, stay on the host in `/etc/etoro-ute/host.env`. The public
+repository never carries the server's address.
+
+**One-time bootstrap** (first deployment of the HTTPS dashboard; root on the VPS):
+```bash
+bash /home/ute/current/deployment/https_dashboard.sh bootstrap --host <name> --htpasswd-from <existing .htpasswd> --replace-site <sites-enabled entry that served <name> before>
+```
+- It needs a certificate at `/etc/letsencrypt/live/<name>/`; renewal keeps working through
+  `/.well-known/acme-challenge/` on port 80.
+- It gives the site its own copy of the basic-auth file.
+- It only removes the *link* of the replaced site; the site's file is kept.
+
+**Access** takes two logins:
+1. nginx basic auth;
+2. the engine's own login (session cookie HttpOnly, SameSite=Strict, Secure).
+
+What else the site enforces:
+- the Basic-Auth credential is never forwarded to the engine;
+- only GET, HEAD and POST are allowed;
+- dotfiles are refused;
+- `/login` is limited to 6 requests per minute (429 when exceeded);
+- the engine stays bound to `127.0.0.1:8790`.
+
+**Commands:**
+- **Check** (read-only, also part of `verify_vps.sh`): `bash /home/ute/current/deployment/https_dashboard.sh check`.
+- **Disable:** `https_dashboard.sh rollback`. It re-enables the replaced site. Then remove `/etc/etoro-ute/host.env`
+  so that later syncs leave nginx alone.
+
+**SSH tunnel fallback:**
+```bash
+ssh -N -L 18790:127.0.0.1:8790 root@<vps>
+```
+Then open `http://localhost:18790`. Use `localhost`, because browsers accept Secure cookies there.
+
 ## Backups
 
 - **Nightly:** `etoro-ute-backup.timer`, 23:15, uses the SQLite online backup API, then runs a restore verification.
