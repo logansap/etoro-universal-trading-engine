@@ -5,7 +5,7 @@
 #     <repo.bundle>  a git bundle whose refs/heads/main is the commit to rehearse (e.g. the one about to be pushed)
 #     --worktree     commit the current working tree (tracked + untracked, not ignored) into a scratch repository
 set -u
-cd /mnt/d/etoro-universal-trading-engine
+cd "$(dirname "$(readlink -f "$0")")/.."   # the repository this script belongs to (any worktree)
 SRC=${1:?usage: run_sync_rehearsal_wsl.sh <repo.bundle|--worktree> [evidence-dir]}
 OUT=${2:-/mnt/d/TSR-evidence/sync_rehearsal_$(date -u +%Y%m%dT%H%M%SZ)}
 mkdir -p "$OUT"

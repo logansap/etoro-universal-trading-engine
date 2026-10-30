@@ -2,7 +2,7 @@
 # Build a release tarball from the working tree and run the 50/50 + Gold Miner retirement container rehearsal.
 #   wsl -u root -e bash scripts/run_multi_rehearsal_wsl.sh [evidence-dir]   (Docker in WSL is root-only here)
 set -u
-cd /mnt/d/etoro-universal-trading-engine
+cd "$(dirname "$(readlink -f "$0")")/.."   # the repository this script belongs to (any worktree)
 OUT=${1:-/mnt/d/TSR-evidence/multi_rehearsal_$(date -u +%Y-%m-%d)}
 mkdir -p $OUT
 git -c safe.directory="*" ls-files -co --exclude-standard -z | tar --null -T - -czf /tmp/ute-release-multi.tar.gz
