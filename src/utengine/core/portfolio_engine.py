@@ -127,8 +127,13 @@ def execute_portfolio(e, session: dt.date, sids: list, now: dt.datetime, drift: 
             continue
         d = json.loads(drow["decision"])
         if not d["rebalance"] and not planned:
-            notes.append(f"{sid}: decision does not rebalance; holds")
-            continue
+            cu = sleeves.catch_up_pending(db, sid)
+            if cu is None:
+                notes.append(f"{sid}: decision does not rebalance; holds")
+                continue
+            d = {**d, "rebalance": True}
+            notes.append(f"{sid}: CAPITAL_CATCH_UP ({cu['reason']}, {cu['ref']}): re-targets the decision's standing "
+                         "weights on the sleeve's equity (no new signal)")
         group.append((sid, drow["decision_id"], d, planned))
     if not group:
         return {"status": "NO_REBALANCE", "notes": notes}
@@ -208,6 +213,7 @@ def execute_portfolio(e, session: dt.date, sids: list, now: dt.datetime, drift: 
     if db.one("SELECT 1 FROM plans WHERE plan_id=?", (plan_id,)):
         for inp in inputs:                           # each sleeve is planned at most once per session
             db.put(f"sleeve_planned:{ss}:{inp['sleeve']}", plan_id)
+            sleeves.consume_catch_up(db, inp["sleeve"], plan_id, nows)
     after = e.reconcile("after_portfolio", e.now())
     return {**out, plan_id: {**res, "after": after.status, "legs": len(pp["legs"]),
                              "crossings": len(pp["crossings"]), "notes": body["notes"]}}

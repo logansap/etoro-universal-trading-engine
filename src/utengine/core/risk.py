@@ -88,6 +88,9 @@ def evaluate(db, cfg: dict, spec: dict, legs: list, allocation, quotes: dict, *,
                 reason = "no valid quote"
             elif _age(q.quote_time, now) > r["max_quote_age_seconds"]:
                 reason = f"quote {_age(q.quote_time, now):.0f}s old > {r['max_quote_age_seconds']}s"
+            elif r.get("max_spread_bp") is not None and (q.ask - q.bid) / ((q.ask + q.bid) / 2) * 1e4 > r["max_spread_bp"]:
+                reason = (f"spread {(q.ask - q.bid) / ((q.ask + q.bid) / 2) * 1e4:.1f} bp > max_spread_bp "
+                          f"{r['max_spread_bp']}")
             elif available_cash is not None and open_total + leg.amount > available_cash + 1e-6:
                 reason = f"unaffordable: {open_total + leg.amount:.2f} > available {available_cash:.2f}"
         else:

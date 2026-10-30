@@ -70,7 +70,12 @@ def resolve_discrepancy(db, disc_id: str, classify: str, evidence: str, operator
     d = db.one("SELECT * FROM discrepancies WHERE disc_id=?", (disc_id,))
     if not d or d["status"] != "OPEN":
         raise EngineError(f"no open discrepancy {disc_id}")
-    if d["kind"] != "CASH_UNEXPLAINED":
+    from .funding import SUSPENSE, _exc_id
+    if d["kind"] == SUSPENSE and classify not in ("EXTERNAL_TRADE", "DEPOSIT"):
+        # a suspense item is a positive unexplained credit: e.g. the proceeds of a foreign (pre-existing) position
+        # closed outside the engine (EXTERNAL_TRADE), or a deposit without typed broker evidence (DEPOSIT)
+        raise EngineError("a suspense credit can only be classified as EXTERNAL_TRADE or DEPOSIT")
+    if d["kind"] not in ("CASH_UNEXPLAINED", SUSPENSE):
         raise EngineError(f"{d['kind']} is not a cash discrepancy; resolve it with its own command")
     amt = float(d["amount"])
     if classify in ("DEPOSIT", "TRADE_CLOSE") and amt <= 0 or classify == "WITHDRAWAL" and amt >= 0:
@@ -88,6 +93,9 @@ def resolve_discrepancy(db, disc_id: str, classify: str, evidence: str, operator
                                         "evidence": evidence, "at": now}), disc_id))
         db.audit("DISCREPANCY_RESOLVED", {"disc_id": disc_id, "classified_as": classify, "amount": amt,
                                           "operator": operator, "evidence": evidence}, ts=now)
+    if d["kind"] == SUSPENSE:
+        from . import halts
+        halts.resolve_exception(db, _exc_id(disc_id), f"operator {operator} ({classify})", now)
     return fid
 
 

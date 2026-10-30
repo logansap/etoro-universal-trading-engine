@@ -126,6 +126,33 @@ def mark_posted(db, flow_id: str, policy: str, now: str) -> None:
     db.x("INSERT OR IGNORE INTO sleeve_flow_posts VALUES(?,?,?)", (flow_id, now, policy))
 
 
+def request_catch_up(db, sleeve: str, reason: str, ref: str, now: str) -> None:
+    """New capital reached `sleeve` through an AUDITED transfer (restructure, pool allocation, operator-classified
+    proceeds of a foreign position). Strategies such as #529 trade only when their signal label changes, so without
+    this the new cash would sit idle until then. The next execution of this sleeve re-targets the decision's
+    standing target weights on the sleeve's equity (logged as CAPITAL_CATCH_UP). Ordinary deposits are NOT included."""
+    if sleeve == UNALLOCATED:
+        return
+    cur = db.get(f"catch_up:{sleeve}")
+    if cur and not cur.get("consumed"):
+        return
+    rec = {"sleeve": sleeve, "reason": reason, "ref": ref, "requested_at": now}
+    db.put(f"catch_up:{sleeve}", rec)
+    db.audit("CATCH_UP_REQUESTED", rec, ts=now)
+
+
+def catch_up_pending(db, sleeve: str) -> dict | None:
+    cur = db.get(f"catch_up:{sleeve}")
+    return cur if cur and not cur.get("consumed") else None
+
+
+def consume_catch_up(db, sleeve: str, plan_id: str, now: str) -> None:
+    cur = catch_up_pending(db, sleeve)
+    if cur:
+        db.put(f"catch_up:{sleeve}", {**cur, "consumed": now, "plan_id": plan_id})
+        db.audit("CATCH_UP_CONSUMED", {"sleeve": sleeve, "plan_id": plan_id, "ref": cur["ref"]}, ts=now)
+
+
 def split(total: float, shares: dict, nd: int) -> dict:
     """Split `total` by non-negative `shares` exactly: rounded to nd decimals, remainder to the last key."""
     keys = sorted(k for k, v in shares.items() if v > 0)
@@ -292,6 +319,10 @@ def sync_flows(db, snapshot, engine_ids: set, now: str) -> list:
                 post(db, s, kind, now, ref=f"flow:{f['flow_id']}", cash=a, flow_id=f["flow_id"],
                      detail={"policy": policy, "evidence": f["evidence"]})
             mark_posted(db, f["flow_id"], policy, now)
+        if kind == "EXTERNAL_TRADE" and amt > 0:      # proceeds of a foreign position, classified by an operator
+            for s, a in parts.items():
+                if a > 0:
+                    request_catch_up(db, s, "external-position proceeds", f"flow:{f['flow_id']}", now)
     return issues
 
 
@@ -477,6 +508,9 @@ def allocate_pool(db, approved_by: str, now: str, ref: str) -> dict:
         for s, a in parts.items():
             post(db, s, "ALLOCATE_IN", now, ref=ref, cash=a, detail={"approved_by": approved_by})
         db.audit("POOL_ALLOCATED", {"amount": amt, "parts": parts, "approved_by": approved_by, "ref": ref}, ts=now)
+    for s, a in parts.items():
+        if a > 0:
+            request_catch_up(db, s, "pool allocation", ref, now)
     return parts
 
 
@@ -587,6 +621,9 @@ def restructure(db, preview_hash: str, approved_by: str, val: dict, now: str) ->
         db.audit("PORTFOLIO_RESTRUCTURED", {"hash": preview_hash, "amount": amt, "from_weights": body["from_weights"],
                                             "to_weights": body["to_weights"], "retired": body["retired"],
                                             "added": body["added"], "approved_by": approved_by}, ts=now)
+    for s, x in get.items():
+        if x > 0:
+            request_catch_up(db, s, "restructure", ref, now)
     return {"status": "APPLIED", "amount": amt, "weights": body["to_weights"], "retired": body["retired"]}
 
 

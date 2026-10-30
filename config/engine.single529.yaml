@@ -1,12 +1,13 @@
-# eToro Universal Trading Engine -- SINGLE-STRATEGY configuration proposal (2026-10-30): 100% QC_529_ETORO_API2
-# (#529 frozen rules on the 15 API-confirmed eToro instruments; SVIX/BTAL/TECS/UVIX weight in cash) as ONE sleeve of
-# the multi-strategy ledger, so an existing 50/50 database is migrated with the audited `portfolio restructure`
-# (docs/SINGLE_STRATEGY_MIGRATION.md), never by editing weights. Same safety rules as engine.multi.yaml (shadow;
-# live refused in code). engine.multi.yaml stays the rollback configuration.
+# eToro Universal Trading Engine -- SINGLE-STRATEGY configuration (owner decision 2026-10-30): 100%
+# QC_529_ETORO_RESTRICTED (#529 frozen rules on the 11 approved instruments UVXY TECL SPXL SQQQ TLT BIL TQQQ SOXS QQQ
+# PSQ QLD; every other target weight stays in cash) as ONE sleeve of the multi-strategy ledger, so the existing 50/50
+# database is migrated with the audited `portfolio restructure` (docs/SINGLE_STRATEGY_MIGRATION.md), never by editing
+# weights. QC_60_SQQQ and QC_529_ETORO_API2 stay available for research only. Same safety rules as engine.multi.yaml
+# (shadow; live refused in code). engine.multi.yaml stays the rollback configuration.
 schema_version: 1
 engine:
   instance_id: ute-multi-rc1
-  description: "Single-strategy 100% #529 API-2 shadow configuration -- live NOT enabled"
+  description: "Single-strategy 100% #529 eToro-restricted (11) shadow configuration -- live NOT enabled"
 broker:
   name: etoro
   access: live_read_only            # the eToro adapter has no write methods
@@ -27,7 +28,7 @@ account:
   max_broker_state_age_seconds: 300
 runtime:
   mode: shadow                      # simulation | shadow   (live is refused)
-  initial_strategy: QC_529_ETORO_API2   # used ONLY at the first start of an empty database
+  initial_strategy: QC_529_ETORO_RESTRICTED   # used ONLY at the first start of an empty database
   strategies_dir: strategies
   cycle_interval_seconds: 60
 security:
@@ -50,6 +51,7 @@ risk:
   max_single_order_usd: 25000       # catastrophic-bug backstop, not a sizing rule
   min_order_usd: 10                 # eToro minimum position
   max_quote_age_seconds: 120
+  max_spread_bp: 30.0              # pilot gate: an open with a wider broker quote is blocked (TECL observed 14.8 bp)
   halt_allows_reductions: false
 market_data:
   provider: yahoo                   # free Yahoo chart endpoint for shadow decisions
@@ -82,7 +84,7 @@ capital:
 portfolio:
   mode: multi_strategy              # used at the FIRST start only; later changes via `portfolio reallocate`
   sleeves:
-    - strategy: QC_529_ETORO_API2
+    - strategy: QC_529_ETORO_RESTRICTED
       weight: 1.0
   funding_policy: proportional      # deposits / withdrawals split by sleeve weight
   rebalance_policy: strategy_independent

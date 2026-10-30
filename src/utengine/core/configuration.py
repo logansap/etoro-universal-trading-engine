@@ -187,6 +187,7 @@ ENGINE_SCHEMA = D(
         max_single_order_usd=F("float", lo=10.0, hi=100000.0),
         min_order_usd=F("float", lo=10.0, hi=1000.0),
         max_quote_age_seconds=F("int", lo=5, hi=3600),
+        max_spread_bp=F("float", lo=1.0, hi=500.0, required=False),
         halt_allows_reductions=F("bool"),
     ),
     market_data=D(provider=F("str", choices=("csv", "yahoo")), csv_dir=F("str", required=False),
