@@ -141,6 +141,97 @@ VPS and change the port in the printed URL to 18790. The link is valid for 120 s
 runuser -u ute -- /home/ute/venv/bin/trading-engine --config /etc/etoro-ute/engine.yaml --home /home/ute/data dashboard login-link
 ```
 
+## HTTPS dashboard (GitOps)
+
+The nginx site that puts the dashboard at `https://<name>/` is part of every release:
+- `deployment/nginx/ute-dashboard.conf.template`;
+- `deployment/nginx/ute-dashboard-proxy.inc`.
+
+**How it is applied:**
+- `sync_vps.sh` applies the site of the deployed commit in step 8b, after the deployment is verified.
+- It changes nginx only when the site differs from git: a new release, or a hand edit (drift).
+- Each change takes a backup of `/etc/nginx` and passes `nginx -t` before the reload.
+- On failure the previous files are restored and the deployment exits 6: the engine is deployed, the old site keeps
+  serving.
+- The trading engine is never restarted for it.
+
+**The only host values,** the name and the certificate, stay on the host in `/etc/etoro-ute/host.env`. The public
+repository never carries the server's address.
+
+**One-time bootstrap** (first deployment of the HTTPS dashboard; root on the VPS):
+```bash
+bash /home/ute/current/deployment/https_dashboard.sh bootstrap --host <name> --replace-site <sites-enabled entry that served <name> before>
+```
+- It needs a certificate at `/etc/letsencrypt/live/<name>/`; renewal keeps working through
+  `/.well-known/acme-challenge/` on port 80.
+- It only removes the *link* of the replaced site; the site's file is kept.
+
+**Access:** ONE login, the engine's own. It uses a scrypt-hashed password, an 8-hour session, and a cookie that is
+HttpOnly, SameSite=Strict and Secure. There is no basic auth.
+
+What the site enforces:
+- failed logins are counted per real client address (nginx always overwrites `X-Real-IP`; the engine runs with
+  `--trust-proxy`), so an attacker locks out only itself;
+- `/login` is limited to 6 requests per minute per address (429 when exceeded);
+- no `Authorization` header is ever forwarded;
+- only GET, HEAD and POST are allowed;
+- dotfiles are refused;
+- the engine stays bound to `127.0.0.1:8790`.
+
+Use a strong dashboard password: it is the only one.
+
+**Commands:**
+- **Check** (read-only, also part of `verify_vps.sh`): `bash /home/ute/current/deployment/https_dashboard.sh check`.
+- **Roll back (one command):** `https_dashboard.sh restore`. It puts `/etc/nginx` back exactly as it was before
+  bootstrap (bootstrap takes that backup first), checks it with `nginx -t` and reloads. A backup that fails `nginx -t`
+  is not left in place.
+- **Disable:** `https_dashboard.sh rollback`. It removes this site and re-enables the replaced site.
+- Both commands set `/etc/etoro-ute/host.env` aside, so later syncs leave nginx alone. Run bootstrap again to
+  re-enable.
+
+**SSH tunnel fallback:**
+```bash
+ssh -N -L 18790:127.0.0.1:8790 root@<vps>
+```
+Then open `http://localhost:18790`. Use `localhost`, because browsers accept Secure cookies there.
+
+## Read-only audit account (`ute-audit`)
+
+The account lets an auditor (a Claude session) read evidence without any operator access. It is the
+Universal Engine's own account; it is not Gold Miner's `claude-audit` and does not depend on it.
+
+**What it can run:** its SSH key can run exactly one forced command. That command takes one name from a fixed list
+and passes it to a root-owned wrapper, the only binary the account may run through sudo:
+
+| `ssh ute-audit <name>` | What it returns |
+|---|---|
+| `snapshot` | The dashboard's data as JSON: broker equity, sleeves, P&L, trades, operations and migration. It reads the engine database read-only and makes no broker call. |
+| `verify` | `verify_vps.sh` without `--probe`, so no broker call. |
+| `health` | Service and timer states, restarts and the release in use. |
+| `journal` | The last 600 engine and 100 dashboard journal lines. |
+| `release` | The current and previous release, the checkout commit and status, and the deployment history. |
+| `https-check` | `https_dashboard.sh check`. |
+
+**What it cannot do:** it cannot place, change or cancel an order, write state, configuration or the repository,
+control a service, read a credential file, the engine database or the dashboard password, or open a shell.
+
+**How it is held to that:**
+- the password is locked;
+- the account is not in group `ute`;
+- `authorized_keys` is root-owned and uses `restrict`: no pty and no forwarding.
+
+**One-time setup** (root on the VPS; `setup_audit.sh` runs every negative check itself):
+```bash
+bash /home/ute/current/deployment/audit/setup_audit.sh --pubkey /root/ute-audit.pub
+```
+- If sshd restricts logins with `AllowUsers` or `AllowGroups`, the script says so and does not edit sshd.
+- After setup, `sync_vps.sh` refreshes the wrapper from each verified release in step 8c.
+
+**Remove:**
+```bash
+userdel -r ute-audit && rm -f /etc/sudoers.d/ute-audit /usr/local/sbin/ute-audit-wrapper /usr/local/sbin/ute-audit-ssh
+```
+
 ## Backups
 
 - **Nightly:** `etoro-ute-backup.timer`, 23:15, uses the SQLite online backup API, then runs a restore verification.

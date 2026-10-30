@@ -40,7 +40,7 @@ docker restart $NAME >/dev/null; sleep 15
 docker exec $NAME bash /rehearsal/rehearse_sync_vps.sh /rehearsal/repo.bundle after-boot; B=$?
 set -e
 docker cp $NAME:/rehearsal/SYNC_REHEARSAL_REPORT.md "$OUT/"
-for f in sync_first.out sync_update.out sync_broken.out sync.out verify_final.out verify_boot.out rollback_manual.out \
+for f in audit_release.out audit_health.out audit_journal.out audit_https-check.out audit_setup.out audit_snapshot.json sync_first.out sync_update.out sync_broken.out sync.out verify_final.out verify_boot.out rollback_manual.out \
          rollback_restore.out sandbox_probe.out dash_probe.json; do docker cp $NAME:/rehearsal/$f "$OUT/" 2>/dev/null; done
 docker exec $NAME bash -c 'cat /home/ute/deploy/history.tsv' > "$OUT/history.tsv" 2>/dev/null
 docker rm -f $NAME >/dev/null

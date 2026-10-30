@@ -16,13 +16,16 @@
 #    5. credential-file gates (names, mode, CRLF, Gold Miner names/values compared as hashes; nothing printed);
 #    6. pre-deployment backup of the running state (online SQLite backup + restore verification, the other state
 #       files, the config; never credentials) under /home/ute/backups/predeploy/<ts>_<from>_to_<to>;
-#    7. install.sh (validates the new release BEFORE switching); config gates: shadow + the 50/50 portfolio;
+#    7. install.sh (validates the new release BEFORE switching); config gates: shadow + a sleeve portfolio;
+#    8b. after a verified deployment: deployment/https_dashboard.sh apply -- the nginx site of the dashboard is part
+#       of the release (GitOps); applied only when it changed; nginx -t, reload; restored on failure (exit 6)
 #    8. restart; verify_vps.sh --expect-commit <sha> (service, sandbox isolation, shadow, audit chain, SQLite
 #       integrity, broker key READ_ONLY when a key exists, dashboard auth); on a failure: automatic rollback to the
 #       previous release (state restored from step 6 if the schema changed), verified;
 #    9. Gold Miner fingerprint AFTER: must be identical (exit 3 otherwise); then history.tsv + log.
 # Exit: 0 deployed and verified; 2 refused (nothing changed); 3 Gold Miner state changed during the deployment;
 #       4 verification failed and the previous release was restored; 5 verification AND rollback failed.
+#       6 deployed and verified, but the HTTPS dashboard site could not be updated (nginx keeps the previous one).
 # Rollback by hand: bash /home/ute/current/deployment/rollback.sh [--restore-state <predeploy-dir>]
 #              or:  bash sync_vps.sh --sha <previous commit>     (see /home/ute/deploy/history.tsv)
 set -euo pipefail
@@ -196,9 +199,9 @@ PREV_BEFORE=$(readlink "$UTE_CURRENT.previous" 2>/dev/null || true)
 PREV_VENV_BEFORE=$(readlink "$UTE_VENV.previous" 2>/dev/null || true)
 sh "$STAGE/deployment/install.sh" "$STAGE" "$SHA" || die "install.sh refused the release (the previous release keeps running)"
 grep -q '^  mode: shadow' "$UTE_CONFIG" || die "installed config is not shadow"
-grep -q '^  mode: multi_strategy' "$UTE_CONFIG" || die "installed config is not the 50/50 portfolio"
-{ grep -q 'strategy: QC_529_ETORO_RESTRICTED' "$UTE_CONFIG" && grep -q 'strategy: QC_60_SQQQ' "$UTE_CONFIG"; } \
-  || die "the installed config does not carry both 50/50 sleeves"
+grep -q '^  mode: multi_strategy' "$UTE_CONFIG" || die "installed config is not a multi-strategy sleeve portfolio"
+grep -q '^    - strategy: ' "$UTE_CONFIG" || die "the installed config has no portfolio sleeve"
+say "   config: shadow, sleeves $(sed -n 's/^    - strategy: //p' "$UTE_CONFIG" | tr '\n' ' ')(the database record governs)"
 
 say "8. restart and verify"
 systemctl enable --quiet etoro-ute.service etoro-ute-health.timer etoro-ute-backup.timer
@@ -237,6 +240,25 @@ if [ $VERIFY -ne 0 ]; then
     RESULT=VERIFY_FAILED_FIRST_INSTALL_STOPPED
     say "   first installation: nothing to roll back to; the engine is stopped"
   fi
+fi
+
+if [ $RC -eq 0 ]; then
+  say "8b. HTTPS dashboard site (GitOps: the nginx site of THIS release; no-op until bootstrap was run)"
+  if bash "$UTE_CURRENT/deployment/https_dashboard.sh" apply > "$UTE_DEPLOY/logs/https-$TS.log" 2>&1; then
+    sed 's/^/   /' "$UTE_DEPLOY/logs/https-$TS.log"
+  else
+    sed 's/^/   /' "$UTE_DEPLOY/logs/https-$TS.log"
+    RC=6 RESULT="$RESULT+DASHBOARD_SITE_NOT_UPDATED"
+    say "   the engine is deployed and verified; nginx keeps serving the previous dashboard site"
+  fi
+fi
+
+if [ $RC -eq 0 ] && [ -f /usr/local/sbin/ute-audit-wrapper ]; then
+  say "8c. read-only audit account (GitOps: the wrapper of THIS release; installed once by deployment/audit/setup_audit.sh)"
+  for f in ute-audit-wrapper ute-audit-ssh; do
+    if cmp -s "$UTE_CURRENT/deployment/audit/$f.sh" "/usr/local/sbin/$f"; then say "   $f: unchanged"
+    else install -o root -g root -m 0755 "$UTE_CURRENT/deployment/audit/$f.sh" "/usr/local/sbin/$f" && say "   $f: updated from the release"; fi
+  done
 fi
 
 say "9. Gold Miner fingerprint (after)"

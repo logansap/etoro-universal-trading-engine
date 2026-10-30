@@ -103,12 +103,14 @@ takeover:
   investable_reserve_pct: 0.02
   financing_annual_rate_observed:
     GDX: 0.1005                     # observed on Gold Miner's x5 GDX CFD (2026-08/09)
-live_controls:                      # OWNER-SET limits (proposal for ~1,300 USD of reconciled equity); operational limits
-  max_order_usd: 1000.0             # one order (the strategy rarely holds one instrument above ~70%)
-  max_gross_usd: 1400.0             # engine exposure incl. pending opens, checked when an open would be sent
-  max_orders_per_session: 12
-  daily_loss_stop_usd: 260.0        # ~20% of equity: no new exposure for the rest of the session (worst day -15.5%)
-  cumulative_loss_stop_usd: 455.0   # ~35% of equity: halt ALL, human decision (historical max drawdown -43%)
+live_controls:                      # OWNER-SET limits (proposal sized to the reconciled equity at activation); operational
+  # limits, NOT loss guarantees. They do not scale with equity: review them when equity moves ~10% (an open above
+  # max_order_usd or beyond max_gross_usd is BLOCKED and that weight stays in cash).
+  max_order_usd: 1650.0             # >= 100% of equity: #529's four 25% branches can all pick ONE instrument
+  max_gross_usd: 1700.0             # engine exposure incl. pending opens (~113% of equity), checked when an open is sent
+  max_orders_per_session: 22        # worst case: close 11 instruments, open 11
+  daily_loss_stop_usd: 300.0        # ~20% of equity: no new exposure for the rest of the session (worst day -15.5%)
+  cumulative_loss_stop_usd: 530.0   # ~35% of equity: halt ALL, human decision (historical max drawdown -43%)
   activation_file: /etc/etoro-ute/live-activation.json
   forbidden_hashes_file: /etc/etoro-ute/forbidden-user-key.sha256
   kill_switch_file: /etc/etoro-ute/KILL_SWITCH

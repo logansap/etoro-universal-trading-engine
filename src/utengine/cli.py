@@ -266,13 +266,16 @@ def cmd_dashboard(a):
         return 0
     from .dashboard.data import Data
     cfg, specs = _dash_ctx(a)
+    if a.action == "snapshot":                  # the read-only audit account's view; never calls the broker
+        print(json.dumps(server.snapshot(Data(cfg, specs, a.home)), indent=1, sort_keys=True, default=str))
+        return 0
     print(f"read-only dashboard on http://{a.host}:{a.port}/ (mode {cfg['runtime']['mode']}; Ctrl+C stops)")
     clock = None
     if a.now:                                   # rehearsal / demo clock, as for the engine commands
         fixed, start = dt.datetime.fromisoformat(a.now), time.monotonic()
         clock = lambda: fixed + dt.timedelta(seconds=time.monotonic() - start)  # noqa: E731
     server.serve(Data(cfg, specs, a.home, clock=clock), a.home, host=a.host, port=a.port, allow_remote=a.allow_remote,
-                 secure_cookie=a.secure_cookie)
+                 secure_cookie=a.secure_cookie, trust_proxy=a.trust_proxy)
     return 0
 
 
@@ -649,10 +652,13 @@ def build_parser():
     sv.add_argument("--port", type=int, default=8790)
     sv.add_argument("--allow-remote", action="store_true", help="bind a non-loopback address (prefer an SSH tunnel)")
     sv.add_argument("--secure-cookie", action="store_true", help="set Secure on the session cookie (behind TLS)")
+    sv.add_argument("--trust-proxy", action="store_true", help="behind the LOCAL reverse proxy: count failed logins "
+                    "per X-Real-IP (honoured only for requests from loopback)")
     spw = dss.add_parser("set-password")
     spw.add_argument("--password-file", default=None, help="read the password from this file (else prompt)")
     ll = dss.add_parser("login-link")
     ll.add_argument("--port", type=int, default=8790)
+    dss.add_parser("snapshot", help="every dashboard data route as JSON (engine database read-only; no broker call)")
     dsh.set_defaults(fn=cmd_dashboard)
     rt = sub.add_parser("retirement", help="Gold Miner retirement evidence ledger (the tool runs on the GM host)")
     rts = rt.add_subparsers(dest="action", required=True)

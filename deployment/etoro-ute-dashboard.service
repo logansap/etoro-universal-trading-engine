@@ -12,7 +12,7 @@ User=ute
 Group=ute
 Environment=UTE_HOME=/home/ute/data
 Environment=UTE_BACKUP_DIR=/home/ute/backups/nightly
-ExecStart=/home/ute/venv/bin/trading-engine --config /etc/etoro-ute/engine.yaml --home /home/ute/data dashboard serve --host 127.0.0.1 --port 8790
+ExecStart=/home/ute/venv/bin/trading-engine --config /etc/etoro-ute/engine.yaml --home /home/ute/data dashboard serve --host 127.0.0.1 --port 8790 --secure-cookie --trust-proxy
 Restart=on-failure
 RestartSec=10
 ProtectSystem=strict

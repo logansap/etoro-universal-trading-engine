@@ -276,3 +276,75 @@ def test_log_and_backup_dirs_can_live_outside_the_state_directory(tmp_path, monk
     (tmp_path / "nightly").mkdir()
     (tmp_path / "nightly" / "engine-20261030T000000Z.manifest.json").write_text("{}")
     assert d.operations()["backups"] == ["engine-20261030T000000Z.manifest.json"]
+
+
+@pytest.mark.parametrize("trust_proxy", [True, False])
+def test_lockout_is_per_real_client_behind_the_local_proxy(tmp_path, trust_proxy):
+    """INVARIANT (single login behind nginx): with --trust-proxy, failed logins are counted per X-Real-IP (set by the
+    local proxy), so an attacker locks out only itself, never the owner; without it the header is ignored (every
+    request counts against the socket address). A malformed header falls back to the socket address."""
+    env, e, d = setup(tmp_path)
+    S.set_password(env.home, PW)
+    box = {}
+    threading.Thread(target=S.serve, args=(d, env.home), kwargs={"port": 0, "env": {}, "trust_proxy": trust_proxy,
+                     "ready": lambda h: box.update(h=h)}, daemon=True).start()
+    while "h" not in box:
+        pass
+    h = box["h"]
+
+    def post(pw, real_ip):
+        c = http.client.HTTPConnection("127.0.0.1", h.server_address[1], timeout=10)
+        c.request("POST", "/login", body=urllib.parse.urlencode({"password": pw}),
+                  headers={"Content-Type": "application/x-www-form-urlencoded", "X-Real-IP": real_ip})
+        r = c.getresponse()
+        r.read()
+        return r.status
+    try:
+        for _ in range(5):
+            assert post("wrong password!!", "203.0.113.5") == 401
+        assert post(PW, "203.0.113.5") == 429                        # the attacker's address is locked out
+        owner = post(PW, "198.51.100.7")
+        assert owner == (303 if trust_proxy else 429)                # the owner logs in (only behind a trusted proxy)
+        if trust_proxy:
+            assert post(PW, "not-an-address") == 303                 # malformed: socket address (not locked)
+    finally:
+        h.shutdown()
+
+
+def test_snapshot_is_every_dashboard_route_and_writes_nothing(tmp_path, capsys):
+    """INVARIANT (read-only audit account): `dashboard snapshot` returns every data route of the dashboard as JSON from
+    the read-only data layer; the engine database is unchanged; no credential or password hash appears in it."""
+    env, e, d = setup(tmp_path)
+    db = sorted(p for p in env.home.rglob("*") if p.is_file() and not p.name.endswith("-shm"))
+    before = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in db}
+    S.set_password(env.home, PW)
+    auth = S.auth_path(env.home).read_text()
+    from utengine.cli import main as cli
+    assert cli(["--config", str(env.cfg_path), "--home", str(env.home), "dashboard", "snapshot"]) == 0
+    out = capsys.readouterr().out
+    snap = json.loads(out)
+    assert set(snap) == set(S.DATA_ROUTES)
+    assert snap["overview"]["account"]["account_equity"] == pytest.approx(d.overview()["account"]["account_equity"])
+    assert {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in db} == before
+    assert json.loads(auth)["hash"] not in out and "API_KEY" not in out and "USER_KEY" not in out
+
+
+def test_performance_values_are_labelled_as_the_last_close_and_history_is_untouched(tmp_path):
+    """2026-10-30: `status` showed the pre-takeover close next to the live equity without saying it was a close. INVARIANT: the performance blocks name their equity values last_close_*
+    and say which close they are; they equal the recorded rows; new capital after the close changes the live
+    valuation, never the recorded history."""
+    from utengine.core import accounting, sleeves
+    env, e, d = setup(tmp_path)
+    rows = [dict(r) for r in e.db.q("SELECT * FROM daily_equity ORDER BY session")]
+    assert rows, "the scenario records a daily close"
+    p = accounting.performance(e.db)
+    assert p["last_close_strategy_equity"] == rows[-1]["strategy_equity"] and "equity" not in p
+    assert p["last_close_account_equity"] == rows[-1]["account_equity"] and "account_equity" not in p
+    assert p["values_as_of"].startswith(f"close of session {rows[-1]['session']}") and "not live" in p["values_as_of"]
+    for s, v in sleeves.performance(e.db).items():
+        assert "equity" not in v and "not live" in v["values_as_of"] and v["last_close_equity"] is not None
+    env.broker.deposit(150.0, record=False)
+    env.clock.advance(minutes=1)
+    e.reconcile("t", env.clock())
+    assert [dict(r) for r in e.db.q("SELECT * FROM daily_equity ORDER BY session")] == rows
+    assert accounting.performance(e.db)["last_close_strategy_equity"] == rows[-1]["strategy_equity"]

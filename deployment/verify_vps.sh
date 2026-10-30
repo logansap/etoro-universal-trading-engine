@@ -138,6 +138,10 @@ else
   info "dashboard not enabled (set a password first; docs/DEPLOYMENT.md)"
 fi
 
+echo "## https dashboard (GitOps nginx site)"
+HC=$(bash "$(dirname "$(readlink -f "$0")")/https_dashboard.sh" check 2>&1); HCR=$?
+echo "$HC"; [ $HCR -eq 0 ] || F=1
+
 echo "## backups"
 N=$(ls "$UTE_NIGHTLY"/engine-*.manifest.json 2>/dev/null | wc -l)
 info "nightly backups: $N (latest $(ls "$UTE_NIGHTLY"/engine-*.manifest.json 2>/dev/null | tail -1 | xargs -r basename))"

@@ -5,7 +5,8 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends systemd systemd-sysv python3 python3-venv python3-pip rsync sqlite3 \
-      ca-certificates procps dbus curl iproute2 git util-linux \
+      ca-certificates procps dbus curl iproute2 git util-linux nginx openssl apache2-utils \
+      sudo openssh-server openssh-client \
  && rm -rf /var/lib/apt/lists/* \
  && (cd /lib/systemd/system/sysinit.target.wants && ls | grep -v systemd-tmpfiles-setup | xargs rm -f) \
  && rm -f /lib/systemd/system/multi-user.target.wants/* /etc/systemd/system/*.wants/* \

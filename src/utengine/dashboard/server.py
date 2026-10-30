@@ -177,7 +177,7 @@ def _safe_next(n: str) -> str:
     return n if n.startswith("/") and not n.startswith("//") and "\\" not in n else "/"
 
 
-def make_handler(data, auth: Auth, secure_cookie: bool):
+def make_handler(data, auth: Auth, secure_cookie: bool, trust_proxy: bool = False):
     class H(http.server.BaseHTTPRequestHandler):
         server_version = "ute-dashboard"
         sys_version = ""
@@ -221,6 +221,20 @@ def make_handler(data, auth: Auth, secure_cookie: bool):
             if self.command != "HEAD":
                 self.wfile.write(raw)
 
+        def _client(self):
+            """The address failed logins are counted against. Behind the local reverse proxy (trust_proxy, only for a
+            request that itself comes from loopback) it is the proxy's X-Real-IP, which nginx always overwrites with
+            the real client address; otherwise every visitor would share the proxy's address, so one attacker could
+            lock everyone out. A malformed header falls back to the socket address."""
+            addr = self.client_address[0]
+            if trust_proxy and ipaddress.ip_address(addr).is_loopback:
+                real = (self.headers.get("X-Real-IP") or "").strip()
+                try:
+                    return str(ipaddress.ip_address(real))
+                except ValueError:
+                    return addr
+            return addr
+
         def _cookie(self):
             for part in (self.headers.get("Cookie") or "").split(";"):
                 k, _, v = part.strip().partition("=")
@@ -245,7 +259,7 @@ def make_handler(data, auth: Auth, secure_cookie: bool):
                 if "otp" in q and self.command == "HEAD":   # link previews/prefetchers must not burn a single-use link
                     return self._send(200, b"", "text/html")
                 if "otp" in q:
-                    addr = self.client_address[0]
+                    addr = self._client()
                     if auth.locked_out(addr):
                         return self._send(429, {"error": "too many failed logins; wait 5 minutes"})
                     if auth.use_otp(q["otp"][0]):
@@ -279,7 +293,7 @@ def make_handler(data, auth: Auth, secure_cookie: bool):
             u = urllib.parse.urlsplit(self.path)
             body = self._body()[:4096].decode("utf-8", "replace")
             if u.path == "/login":
-                addr = self.client_address[0]
+                addr = self._client()
                 if auth.locked_out(addr):
                     return self._send(429, page.LOGIN.replace("{msg}", "Too many failed logins; wait 5 minutes."),
                                       "text/html")
@@ -315,7 +329,20 @@ class ExclusiveHTTPServer(http.server.ThreadingHTTPServer):
         super().server_bind()
 
 
-def serve(data, home, host="127.0.0.1", port=8790, allow_remote=False, secure_cookie=False, env=None, ready=None):
+def snapshot(data) -> dict:
+    """Every dashboard data route at once (the read-only audit account's view: `dashboard snapshot`). The same
+    read-only data layer as the web pages; a route that cannot be read is reported, never estimated."""
+    out = {}
+    for name in DATA_ROUTES:
+        try:
+            out[name] = getattr(data, name)()
+        except Exception as exc:  # noqa: BLE001 -- reported exactly as the web route reports it
+            out[name] = {"error": f"{type(exc).__name__}: {exc}", "data_label": "UNAVAILABLE"}
+    return out
+
+
+def serve(data, home, host="127.0.0.1", port=8790, allow_remote=False, secure_cookie=False, env=None, ready=None,
+          trust_proxy=False):
     env = os.environ if env is None else env
     if any(env.get(k) for k in WRITE_ENV):
         raise SystemExit("refused: a broker WRITE credential is present in the dashboard's environment")
@@ -325,7 +352,7 @@ def serve(data, home, host="127.0.0.1", port=8790, allow_remote=False, secure_co
     if not auth.configured():
         raise SystemExit("refused: no dashboard password set (trading-engine dashboard set-password)")
     try:
-        httpd = ExclusiveHTTPServer((host, port), make_handler(data, auth, secure_cookie))
+        httpd = ExclusiveHTTPServer((host, port), make_handler(data, auth, secure_cookie, trust_proxy))
     except OSError as exc:
         raise SystemExit(f"refused: cannot bind {host}:{port} exclusively ({exc}); another process is listening "
                          f"there, so a login link would reach the wrong dashboard") from exc

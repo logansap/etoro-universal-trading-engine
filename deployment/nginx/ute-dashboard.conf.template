@@ -1,0 +1,74 @@
+# Universal eToro Trading Engine -- owner dashboard at https://__SERVER_NAME__/ (GitOps: rendered and applied by
+# deployment/https_dashboard.sh on every sync_vps.sh deployment; __SERVER_NAME__ comes from /etc/etoro-ute/host.env)
+# Reverse proxy to the engine's authenticated, READ-ONLY dashboard on 127.0.0.1:8790 (the engine stays loopback-only).
+# ONE login: the engine's own (scrypt password, 8 h session, HttpOnly + SameSite=Strict + Secure cookie; failed logins
+# counted per real client address via X-Real-IP, lockout after 5 in 5 minutes) behind nginx's per-address rate limit.
+# The dashboard has no admin or trading endpoints, no broker credential, and opens its database read-only.
+
+# login ATTEMPTS only (a POST, or a one-time link /login?otp=...): viewing the login page is not an attempt (an empty
+# key is not counted), so reloading the page or a health check never locks the owner out of logging in
+map "$request_method:$is_args" $ute_login_attempt {
+    "GET:"   "";
+    "HEAD:"  "";
+    default  $binary_remote_addr;
+}
+limit_req_zone $ute_login_attempt zone=ute_login:1m rate=6r/m;       # login attempts: 6 per minute per client
+limit_req_zone $binary_remote_addr zone=ute_all:5m rate=10r/s;       # everything else
+
+# ---- HTTP: certificate renewal + redirect to the canonical HTTPS name
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name __SERVER_NAME__;
+
+    location ^~ /.well-known/acme-challenge/ {    # certbot webroot renewal (unchanged)
+        root /var/www/letsencrypt;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+    location / {
+        return 301 https://__SERVER_NAME__$request_uri;
+    }
+    access_log /var/log/nginx/ute-dashboard.access.log;
+    error_log /var/log/nginx/ute-dashboard.error.log;
+}
+
+# ---- HTTPS
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name __SERVER_NAME__;
+
+    ssl_certificate     /etc/letsencrypt/live/__SERVER_NAME__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__SERVER_NAME__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    server_tokens off;
+
+    # security headers (server level; no location below defines add_header, so all of these are inherited)
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Cache-Control "no-store" always;
+
+    client_max_body_size 16k;                       # only the login form is ever posted
+    limit_req_status 429;                           # 'too many requests', not a misleading 503
+    location ~ /\. { deny all; }                    # dotfiles (never served by the engine either)
+
+    location = /login {
+        limit_except GET HEAD POST { deny all; }
+        limit_req zone=ute_login burst=3 nodelay;
+        limit_req zone=ute_all burst=40 nodelay;
+        include /etc/nginx/ute-dashboard-proxy.inc;
+    }
+    location / {
+        limit_except GET HEAD POST { deny all; }    # the engine itself answers 405 to anything else, too
+        limit_req zone=ute_all burst=40 nodelay;
+        include /etc/nginx/ute-dashboard-proxy.inc;
+    }
+    access_log /var/log/nginx/ute-dashboard.access.log;
+    error_log /var/log/nginx/ute-dashboard.error.log;
+}
