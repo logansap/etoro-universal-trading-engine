@@ -327,3 +327,24 @@ def test_snapshot_is_every_dashboard_route_and_writes_nothing(tmp_path, capsys):
     assert snap["overview"]["account"]["account_equity"] == pytest.approx(d.overview()["account"]["account_equity"])
     assert {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in db} == before
     assert json.loads(auth)["hash"] not in out and "API_KEY" not in out and "USER_KEY" not in out
+
+
+def test_performance_values_are_labelled_as_the_last_close_and_history_is_untouched(tmp_path):
+    """2026-10-30: `status` showed the pre-takeover close next to the live equity without saying it was a close. INVARIANT: the performance blocks name their equity values last_close_*
+    and say which close they are; they equal the recorded rows; new capital after the close changes the live
+    valuation, never the recorded history."""
+    from utengine.core import accounting, sleeves
+    env, e, d = setup(tmp_path)
+    rows = [dict(r) for r in e.db.q("SELECT * FROM daily_equity ORDER BY session")]
+    assert rows, "the scenario records a daily close"
+    p = accounting.performance(e.db)
+    assert p["last_close_strategy_equity"] == rows[-1]["strategy_equity"] and "equity" not in p
+    assert p["last_close_account_equity"] == rows[-1]["account_equity"] and "account_equity" not in p
+    assert p["values_as_of"].startswith(f"close of session {rows[-1]['session']}") and "not live" in p["values_as_of"]
+    for s, v in sleeves.performance(e.db).items():
+        assert "equity" not in v and "not live" in v["values_as_of"] and v["last_close_equity"] is not None
+    env.broker.deposit(150.0, record=False)
+    env.clock.advance(minutes=1)
+    e.reconcile("t", env.clock())
+    assert [dict(r) for r in e.db.q("SELECT * FROM daily_equity ORDER BY session")] == rows
+    assert accounting.performance(e.db)["last_close_strategy_equity"] == rows[-1]["strategy_equity"]

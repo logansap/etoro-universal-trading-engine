@@ -459,7 +459,8 @@ def performance(db) -> dict:
         rows = [dict(r) for r in db.q("SELECT * FROM sleeve_daily WHERE sleeve=? ORDER BY session", (s,))]
         ext = db.one("SELECT COALESCE(SUM(cash),0) c FROM sleeve_ledger WHERE sleeve=? AND external=1", (s,))["c"]
         out[s] = {"sessions": len(rows), "first": rows[0]["session"], "last": rows[-1]["session"],
-                  "equity": rows[-1]["equity"], "net_external_capital": round(ext, 6),
+                  "values_as_of": f"close of session {rows[-1]['session']}; not live (see the valuation)",
+                  "last_close_equity": rows[-1]["equity"], "net_external_capital": round(ext, 6),
                   "cumulative_pnl": round(sum(r["pnl"] for r in rows), 6), "twr_return": rows[-1]["twr_index"] - 1,
                   "max_drawdown": min(r["drawdown"] for r in rows)}
     return out

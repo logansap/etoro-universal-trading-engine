@@ -128,13 +128,18 @@ def record_daily(db, session: str, *, account_equity, strategy_equity, credit, e
 
 
 def performance(db) -> dict:
+    """Performance from the RECORDED DAILY CLOSES. Its equity values are those of the last close, named last_close_*
+    (2026-10-30: shown unlabelled next to the live reconciliation, the pre-takeover close -- recorded while Gold
+    Miner's position was still foreign -- read as current). The live figures are the reconciliation's; nothing
+    recorded is changed here."""
     rows = [dict(r) for r in db.q("SELECT * FROM daily_equity ORDER BY session")]
     ext = db.one("SELECT COALESCE(SUM(amount),0) s FROM cash_flows WHERE external=1")["s"]
     if not rows:
         return {"sessions": 0, "net_external_capital": ext}
     last = rows[-1]
     return {"sessions": len(rows), "first": rows[0]["session"], "last": last["session"],
-            "strategy_equity": last["strategy_equity"], "account_equity": last["account_equity"],
+            "values_as_of": f"close of session {last['session']} (recorded {last['ts']}); not live",
+            "last_close_strategy_equity": last["strategy_equity"], "last_close_account_equity": last["account_equity"],
             "net_external_capital": ext, "cumulative_pnl": round(sum(r["pnl"] or 0 for r in rows), 6),
             "twr_return": last["twr_index"] - 1.0, "max_drawdown": min(r["drawdown"] for r in rows)}
 
