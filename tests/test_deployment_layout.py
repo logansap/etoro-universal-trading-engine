@@ -164,3 +164,17 @@ def test_sync_refreshes_the_audit_wrapper_only_when_installed_and_only_after_a_v
     i = s.index("8c. read-only audit account")
     assert "[ $RC -eq 0 ] && [ -f /usr/local/sbin/ute-audit-wrapper ]" in s[i - 200:i]
     assert s.index('verify_vps.sh" --expect-commit') < i
+
+
+def test_live_verification_builds_the_engine_with_the_services_environment():
+    """2026-10-31/11-01: in live mode `verify_vps.sh --live` started the engine CLI without the trading-key environment,
+    so the writer gate refused and five checks failed while the service was healthy. INVARIANT: in live/pilot mode the
+    engine-state checks and the probe load the environment files of the installed unit, and the running service's
+    LIVE_WRITER_AUTHORIZED (the entry just before its ENGINE_START, same release) is checked from the database."""
+    v = (DEP / "verify_vps.sh").read_text(encoding="utf-8")
+    live = v[v.index('if [ $PILOT -ge 1 ]; then\n  ENVFILES='):v.index("te status >")]
+    assert "systemctl show -p EnvironmentFiles --value etoro-ute.service" in live
+    assert "UTE_ENVFILES" in live and '. "$f"' in live
+    assert "LIVE_WRITER_AUTHORIZED" in live and "ENGINE_START" in live and "release_id()" in live
+    assert v.count("te status >") == 1 and v.count("te verify >") == 1 and "te broker probe" in v
+    assert "ute_te status" not in v and "ute_te verify" not in v

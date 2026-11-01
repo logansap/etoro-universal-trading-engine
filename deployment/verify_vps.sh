@@ -4,6 +4,9 @@
 #   bash verify_vps.sh [--expect-commit <40-hex>] [--probe]
 #     --expect-commit  FAIL unless that exact commit is the installed release (sync_vps.sh uses this as its gate)
 #     --probe          also make one live READ-ONLY broker read with the engine's key (identity, equity)
+#     --live / --pilot the engine-state checks run with the service's own environment files; building the engine then
+#                      re-runs the writer gate (one read-only GET /me with the trading key) and the engine records a
+#                      LIVE_WRITER_AUTHORIZED audit entry for that check process. No order is ever sent.
 # Reports: installed commit, checkout state, mode, service + timer health, sandbox isolation from Gold Miner, audit
 # chain, SQLite integrity, broker key status (READ_ONLY / NOT_CONFIGURED / REFUSED), dashboard health and auth,
 # backups, and Gold Miner's timer state (reported, never touched).
@@ -99,14 +102,37 @@ if [ "${PID:-0}" -gt 0 ]; then
 fi
 
 echo "## engine state"
-ute_te status > "$TMP/status.json" 2>&1 || true
+# live/pilot: a CLI-built engine needs the SAME environment as the service (the writer gate requires the trading key;
+# without it every CLI check below failed although the service was healthy -- 2026-10-31/11-01). The environment
+# files are read from the installed unit itself. Building the engine re-runs the writer gate (one read-only GET /me
+# with the trading key) and records a LIVE_WRITER_AUTHORIZED entry for this check process; no order is ever sent.
+te() { ute_te "$@"; }
+if [ $PILOT -ge 1 ]; then
+  ENVFILES=$(systemctl show -p EnvironmentFiles --value etoro-ute.service | grep -o '/[^ ]*')
+  te() { runuser -u "$UTE_USER" -- env UTE_HOME="$UTE_DATA" UTE_LOG_DIR="$UTE_LOGS" UTE_BACKUP_DIR="$UTE_NIGHTLY" \
+           UTE_CONFIG="$UTE_CONFIG" UTE_ENVFILES="$ENVFILES" \
+           bash -c 'set -a; for f in $UTE_ENVFILES; do [ -r "$f" ] && . "$f"; done; set +a; exec "$0" "$@"' \
+           "$UTE_TE" --config "$UTE_CONFIG" --home "$UTE_DATA" "$@"; }
+  # the RUNNING service's authorization: the writer authorization written just before its ENGINE_START
+  AUTH=$(dbq "SELECT ts || '|' || COALESCE(json_extract(payload, '\$.approved_by'), '') || '|' || COALESCE(json_extract(payload, '\$.release_sha'), '') FROM audit_log WHERE kind IN ('LIVE_WRITER_AUTHORIZED','SUPERVISED_WRITER_AUTHORIZED') AND seq < (SELECT MAX(seq) FROM audit_log WHERE kind='ENGINE_START') AND seq > COALESCE((SELECT MAX(seq) FROM audit_log WHERE kind='ENGINE_START' AND seq < (SELECT MAX(seq) FROM audit_log WHERE kind='ENGINE_START')), 0) ORDER BY seq DESC LIMIT 1" | tr -d '"')
+  START=$(dbq "SELECT ts FROM audit_log WHERE kind='ENGINE_START' ORDER BY seq DESC LIMIT 1" | tr -d '"')
+  RID=$(runuser -u "$UTE_USER" -- "$UTE_VENV/bin/python" -c "from utengine.core.takeover import release_id; print(release_id())" 2>/dev/null)
+  SVC=$(date -d "$(systemctl show -p ActiveEnterTimestamp --value etoro-ute.service)" +%s 2>/dev/null || echo 0)
+  ST=$(date -d "$START" +%s 2>/dev/null || echo 0)
+  if [ -n "$AUTH" ] && [ -n "$RID" ] && [ "${AUTH##*|}" = "$RID" ] && [ $((ST - SVC)) -ge 0 ] && [ $((ST - SVC)) -le 300 ]; then
+    pass "live: LIVE_WRITER_AUTHORIZED for the running service at ${AUTH%%|*} by $(echo "$AUTH" | cut -d'|' -f2), release $RID (= installed code); service started $(systemctl show -p ActiveEnterTimestamp --value etoro-ute.service) and has not restarted since"
+  else
+    fail "live: no LIVE_WRITER_AUTHORIZED tied to the running service's start (authorization '$AUTH', installed release '$RID', engine start '$START')"
+  fi
+fi
+te status > "$TMP/status.json" 2>&1 || true
 check "engine reports $MODE_EXPECTED mode" "grep -q '\"mode\": \"$MODE_EXPECTED\"' $TMP/status.json"
 if [ $PILOT -ge 1 ]; then
   check "live: engine holds the write capability" "grep -q '\"write_capability\": true' $TMP/status.json"
 else
   check "engine holds no write capability" "grep -q '\"write_capability\": false' $TMP/status.json"
 fi
-ute_te verify > "$TMP/verify.json" 2>&1 || true
+te verify > "$TMP/verify.json" 2>&1 || true
 check "audit chain verified" "grep -q '\"audit_chain_ok\": true' $TMP/verify.json"
 check "SQLite integrity ok" "grep -q '\"sqlite_integrity\": \"ok\"' $TMP/verify.json"
 # the key check recorded since the LAST engine start
@@ -123,8 +149,12 @@ case "$KEY" in
 esac
 grep -o '"reconciliation": "[A-Z_]*"' "$TMP/status.json" | head -1 | sed 's/^/INFO  /'
 if [ $PROBE -eq 1 ] && [ -f "$UTE_CRED" ]; then
-  runuser -u "$UTE_USER" -- bash -c "set -a; . $UTE_CRED; set +a; UTE_HOME=$UTE_DATA UTE_LOG_DIR=$UTE_LOGS $UTE_TE --config $UTE_CONFIG broker probe" \
-    > "$TMP/probe.json" 2>&1 || true
+  if [ $PILOT -ge 1 ]; then
+    te broker probe > "$TMP/probe.json" 2>&1 || true        # the service's environment; reads use the read-only key
+  else
+    runuser -u "$UTE_USER" -- bash -c "set -a; . $UTE_CRED; set +a; UTE_HOME=$UTE_DATA UTE_LOG_DIR=$UTE_LOGS $UTE_TE --config $UTE_CONFIG broker probe" \
+      > "$TMP/probe.json" 2>&1 || true
+  fi
   check "live READ-ONLY broker probe" "grep -q '\"ok\": true' $TMP/probe.json"
 fi
 
