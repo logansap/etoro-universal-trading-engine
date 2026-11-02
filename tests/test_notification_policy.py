@@ -271,3 +271,44 @@ def test_live_gate_check_passes_with_every_gate_and_records_nothing(tmp_path, mo
     auth, _tr, _env = m.live_gate(dict(ENV))
     assert auth.approved_by == "owner" and m.writer is None
     assert m.db.one("SELECT COUNT(*) c FROM audit_log")["c"] == before      # no LIVE_WRITER_AUTHORIZED recorded
+
+
+# ------------------------------------------------------------------------------------------------ the real health unit
+def test_health_unit_path_in_live_mode_without_any_credentials_stopped_hung_and_restarted(tmp_path, monkeypatch):
+    """The installed etoro-ute-health.service loads ONLY ops.env: no trading key, no read-only key. INVARIANT: in a
+    live configuration `health --notify` still runs (monitor-only engine), pages the stalled engine and the broker
+    outage once per incident (not every 5-minute run), and never submits or plans an order. A restarted trading
+    engine continues the same incident without duplicating its alerts."""
+    from utengine.cli import main as cli
+    for k in list(ENV) + ["UTE_ETORO_READONLY_API_KEY", "UTE_ETORO_READONLY_USER_KEY"]:
+        monkeypatch.delenv(k, raising=False)
+    cfg = _live_yaml(tmp_path)
+    home = tmp_path / "home"
+    t0 = dt.datetime(2026, 11, 3, 14, 40, tzinfo=dt.timezone.utc)
+    m = TradingEngine(cfg, home, env={}, monitor_only=True)
+    # the trading engine's last state before it stopped / hung: a heartbeat and an active broker outage
+    m.db.heartbeat("engine", {"phase": "cycle", "mode": "live"}, ts=t0.isoformat())
+    halts.raise_halt(m.db, "BROKER_UNAVAILABLE", "ALL", "account read failed: TimeoutError", t0.isoformat(),
+                     subject="broker-read")
+    for minutes in (2, 7, 12, 17):                            # successive 5-minute health timer runs
+        rc = cli(["--config", str(cfg), "--home", str(home), "--now", (t0 + dt.timedelta(minutes=minutes)).isoformat(),
+                  "health", "--notify"])
+        assert rc == 1                                        # unhealthy, reported -- but it ran
+    rows = [(r["severity"], r["kind"]) for r in m.db.q("SELECT * FROM alerts WHERE suppressed=0 ORDER BY id")]
+    assert rows.count(("CRITICAL", "HEARTBEAT_STALE")) == 1              # once per incident, not every run
+    assert rows.count(("WARNING", "BROKER_UNAVAILABLE_PERSISTENT")) == 0  # first escalation run was already > 5 min
+    assert rows.count(("CRITICAL", "BROKER_UNAVAILABLE_PERSISTENT")) == 1
+    assert m.db.one("SELECT COUNT(*) c FROM intents")["c"] == 0          # monitor-only: nothing planned or sent
+    assert m.db.one("SELECT COUNT(*) c FROM plans")["c"] == 0
+    # restarted trading engine (simulation path), same incident shape: no duplicate alerts, no duplicate orders
+    env = auto_env(tmp_path / "restart")
+    out = Outage(monkeypatch)
+    out.on()
+    t = run(env, idle(), 6)
+    env.engine()
+    out.on()
+    run(env, t, 3)
+    kinds = created(env.e)
+    assert kinds.count(("WARNING", "BROKER_UNAVAILABLE_PERSISTENT")) == 1
+    assert kinds.count(("CRITICAL", "BROKER_UNAVAILABLE_PERSISTENT")) == 1
+    assert sent(env) == []

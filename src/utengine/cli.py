@@ -183,8 +183,12 @@ def cmd_status(a):
     rep = e.status()
     if a.cmd == "health" and getattr(a, "notify", False):
         if rep["heartbeat_stale"]:
-            e.db.alert("CRITICAL", "HEARTBEAT_STALE", f"no engine heartbeat for {rep['heartbeat_age_s']} s",
-                       ts=e.nows())
+            # the message names the LAST heartbeat (stable per incident): the 60-minute dedupe then pages once per
+            # incident with at most an hourly reminder, not every 5-minute health run (the age changed each time)
+            hb = e.db.one("SELECT ts FROM heartbeat WHERE component='engine'")
+            since = hb["ts"][:19].replace("T", " ") + " UTC" if hb and hb["ts"] else "never"
+            e.db.alert("CRITICAL", "HEARTBEAT_STALE", f"no engine heartbeat since {since}: the trading engine is "
+                       "stopped or hung; no order can be placed until it runs again", ts=e.nows())
         rep["escalated"] = halts.escalate(e.db, e.nows())    # broker-outage alerts continue if the engine stalls
         rep["notifications_flush"] = e.flush_notifications(e.now())
     _print(rep)
