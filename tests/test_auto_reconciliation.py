@@ -34,8 +34,10 @@ def test_routine_explained_changes_are_silent(tmp_path):
 
 
 def test_broker_outage_is_one_exception_and_clears_itself(tmp_path, monkeypatch):
-    """INVARIANT: repeated read failures (with different error texts) are ONE halt / exception / notification; the
-    first good read clears the halt and resolves the exception automatically."""
+    """INVARIANT: repeated read failures (with different error texts) are ONE halt / exception; the halt (scope ALL)
+    is active from the FIRST failure; the notification is deferred (2026-11-02 policy): none at once, ONE WARNING once
+    the outage has lasted 3 minutes; the first good read clears the halt and resolves the exception automatically, and
+    an escalation not yet delivered is superseded instead of arriving after recovery."""
     env = Env(tmp_path)
     e = env.engine()
     real = SimulatedBroker.account_snapshot
@@ -45,11 +47,17 @@ def test_broker_outage_is_one_exception_and_clears_itself(tmp_path, monkeypatch)
         n["i"] += 1
         raise BrokerUnavailable(f"timeout #{n['i']}")
     monkeypatch.setattr(SimulatedBroker, "account_snapshot", flaky)
-    for _ in range(4):
+    for i in range(4):
         env.clock.advance(minutes=1)
         assert e.reconcile("t", env.clock()).status == "UNAVAILABLE"
-    assert len(alerts(e, "BROKER_UNAVAILABLE")) == 1
+        assert [(h["kind"], h["scope"]) for h in halts.active(e.db)] == [("BROKER_UNAVAILABLE", "ALL")]
+        if i == 0:
+            assert alerts(e) == []                       # blocked at once, but nobody is paged yet
+    assert alerts(e, "BROKER_UNAVAILABLE") == []
     assert [x["occurrences"] for x in halts.open_exceptions(e.db)] == [4]
+    halts.escalate(e.db, e.nows(env.clock()))
+    halts.escalate(e.db, e.nows(env.clock()))            # idempotent: still ONE warning
+    assert [(a["severity"], a["kind"]) for a in alerts(e)] == [("WARNING", "BROKER_UNAVAILABLE_PERSISTENT")]
     monkeypatch.setattr(SimulatedBroker, "account_snapshot", real)
     env.clock.advance(minutes=1)
     assert e.reconcile("t", env.clock()).clean

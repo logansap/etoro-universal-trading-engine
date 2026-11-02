@@ -66,7 +66,12 @@ class JsonLog:
 
 
 class TradingEngine:
-    def __init__(self, config_path, home, *, clock=None, broker=None, bar_store=None, env=None, sleep=time.sleep):
+    def __init__(self, config_path, home, *, clock=None, broker=None, bar_store=None, env=None, sleep=time.sleep,
+                 monitor_only=False):
+        """monitor_only: an engine for monitoring and operator commands (health, notify, status, verify, probe,
+        halts). It never builds a writer -- so it needs no trading key and works in live mode -- and refuses to run
+        a trading cycle or startup (2026-11-02: the health timer and crash hook could not start in live mode)."""
+        self.monitor_only = monitor_only
         self.cfg = load_engine_config(config_path)
         self.home = pathlib.Path(home)
         self.home.mkdir(parents=True, exist_ok=True)
@@ -94,7 +99,8 @@ class TradingEngine:
         self.id_to_symbol = {iid: s for iid, s in self.instrument_symbols().items()}
         if hasattr(self.broker, "symbols"):
             self.broker.symbols.update(self.id_to_symbol)
-        self.writer = obtain_writer(self.mode, self.broker, authorize=lambda: self._live_writer(env))
+        self.writer = None if monitor_only else obtain_writer(self.mode, self.broker,
+                                                              authorize=lambda: self._live_writer(env))
         self.bars = bar_store or self._bar_store()
         self.executor = Executor(self.db, self.broker, self.writer, self.cfg, self.mode, self.clock, sleep)
         from .supervision import guard_active
@@ -126,12 +132,23 @@ class TradingEngine:
         """The eToro order writer for runtime.mode=live (authorize_live: the one-time owner activation) or
         supervised_live (authorize_supervised), constructed ONLY after every gate passed. Reads keep using the
         READ-ONLY key; this writer holds the trading key."""
+        from ..brokers.etoro_live import EtoroLiveWriter
+        from .security import TRADING_KEY_ENV
+        auth, tr, env = self.live_gate(env)
+        self.db.audit("LIVE_WRITER_AUTHORIZED" if self.mode == "live" else "SUPERVISED_WRITER_AUTHORIZED", {"release_sha": auth.release_sha, "approved_by": auth.approved_by,
+                                                       "expires_at": auth.expires_at}, ts=self.nows())
+        return EtoroLiveWriter(transport=tr, authorization=auth, api_key=env[TRADING_KEY_ENV[0]],
+                               user_key=env[TRADING_KEY_ENV[1]])
+
+    def live_gate(self, env=None):
+        """Every gate of the live writer (release, configuration, activation, trading key scopes, kill switch),
+        exactly as the writer is authorized, WITHOUT building a writer or recording an authorization. Raises
+        LiveExecutionNotAvailable on any failure. Returns (authorization, transport, env)."""
         import json as _json
         import uuid as _uuid
         from ..brokers.etoro import BASE, UrllibTransport
-        from ..brokers.etoro_live import EtoroLiveWriter
         from .errors import LiveExecutionNotAvailable
-        from .security import TRADING_KEY_ENV, authorize_live, authorize_supervised
+        from .security import authorize_live, authorize_supervised
         from .supervision import kill_switch_paths
         from .takeover import release_id
         env = os.environ if env is None else env
@@ -150,12 +167,11 @@ class TradingEngine:
                       scope_probe=scope_probe)
         if self.mode == "live":
             auth = authorize_live(activation_path=self.cfg["live_controls"]["activation_file"], **common)
-        else:
+        elif self.mode == "supervised_live":
             auth = authorize_supervised(approval_path=self.cfg["live_controls"]["activation_file"], **common)
-        self.db.audit("LIVE_WRITER_AUTHORIZED" if self.mode == "live" else "SUPERVISED_WRITER_AUTHORIZED", {"release_sha": auth.release_sha, "approved_by": auth.approved_by,
-                                                       "expires_at": auth.expires_at}, ts=self.nows())
-        return EtoroLiveWriter(transport=tr, authorization=auth, api_key=env[TRADING_KEY_ENV[0]],
-                               user_key=env[TRADING_KEY_ENV[1]])
+        else:
+            raise LiveExecutionNotAvailable(f"mode {self.mode!r} has no live writer")
+        return auth, tr, env
 
     def instrument_symbols(self) -> dict:
         out = {}
@@ -219,6 +235,8 @@ class TradingEngine:
 
     # ------------------------------------------------------------------ startup / restart
     def startup(self) -> dict:
+        if self.monitor_only:
+            raise EngineError("monitor-only engine: startup belongs to the trading service")
         now = self.now()
         last_start = self.db.one("SELECT MAX(seq) s FROM audit_log WHERE kind='ENGINE_START'")["s"]
         last_stop = self.db.one("SELECT MAX(seq) s FROM audit_log WHERE kind='ENGINE_STOP'")["s"]
@@ -507,6 +525,10 @@ class TradingEngine:
                     and not self.db.get(f"sleeve_planned:{w.session.isoformat()}:{spec['id']}") \
                     and json.loads(d["decision"])["rebalance"]:
                 out.append(("MISSED_EXECUTION", w))
+            elif self.db.one("SELECT 1 FROM plans WHERE session=? AND mode=? AND status IN ('PLANNED','HALTED_PHASE1',"
+                             "'HALTED_PHASE2','HALTED_RECONCILIATION','AWAITING_APPROVAL','HELD')",
+                             (w.session.isoformat(), self.mode)):
+                out.append(("INCOMPLETE_EXECUTION", w))      # started, but the window closed before it finished
         for kind, w in out:
             with self.db.tx():
                 cur = self.db.con.execute("INSERT OR IGNORE INTO schedule_events(ts,strategy_id,kind,session,detail) "
@@ -517,10 +539,20 @@ class TradingEngine:
                 if cur.rowcount:
                     self.db.audit(kind, {"strategy_id": spec["id"], "session": w.session.isoformat(),
                                          "window_end": w.end.isoformat()}, ts=self.nows(now))
-            self.db.alert("WARNING", kind, f"{spec['id']} {w.session}: window ended {w.end.isoformat()} (skipped)")
+            if kind != "MISSED_DECISION" and halts.deferred_active_during(self.db, w.start.isoformat(), w.end.isoformat()):
+                self.db.alert("CRITICAL", f"{kind}_BROKER_UNAVAILABLE",
+                              f"{spec['id']} {w.session}: the execution window "
+                              f"{w.start.strftime('%H:%M')}-{w.end.strftime('%H:%M')} UTC closed "
+                              f"{'without executing' if kind == 'MISSED_EXECUTION' else 'before execution finished'} "
+                              "because broker reads failed. The target is carried to the next window (never sent late).",
+                              ts=self.nows(now))
+            else:
+                self.db.alert("WARNING", kind, f"{spec['id']} {w.session}: window ended {w.end.isoformat()} (skipped)")
         return [(k, w.session.isoformat()) for k, w in out]
 
     def cycle(self, now: dt.datetime | None = None) -> dict:
+        if self.monitor_only:
+            raise EngineError("monitor-only engine: it cannot run a trading cycle")
         now = (now or self.now()).astimezone(UTC)
         if self.multi:
             from .portfolio_engine import cycle_portfolio
@@ -544,7 +576,9 @@ class TradingEngine:
         if ew and not drift:
             out["execution"] = self.execute(spec, ew.session, now)
         last_idle = self.db.get("last_idle_reconcile")
-        if not dw and not ew and (not last_idle or (now - dt.datetime.fromisoformat(last_idle)).total_seconds() >= 900):
+        retry = any(h["kind"] in halts.DEFERRED_NOTIFY for h in halts.active(self.db))   # re-read during an outage
+        if not dw and not ew and (retry or not last_idle
+                                  or (now - dt.datetime.fromisoformat(last_idle)).total_seconds() >= 900):
             r = self.reconcile("idle", now)
             self.db.put("last_idle_reconcile", now.isoformat())
             out["reconciliation"] = r.status
@@ -553,6 +587,7 @@ class TradingEngine:
             if not ew:
                 self.executor.abandon_stale(live)
         self.db.put("last_cycle_at", now.isoformat())
+        out["escalated"] = halts.escalate(self.db, self.nows(now))
         out["notifications"] = self.flush_notifications(now)
         self.db.heartbeat("engine", {"phase": "cycle", "mode": self.mode, "strategy": spec["id"]}, ts=self.nows(now))
         self.log("cycle", **{k: v for k, v in out.items() if k != "at"})

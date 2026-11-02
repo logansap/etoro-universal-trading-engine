@@ -24,7 +24,9 @@ from .core.reconciliation import acknowledge_external, ownership_report
 from .strategy_modules import REGISTRY
 
 
-def _engine(a):
+def _engine(a, monitor: bool = False):
+    """monitor=True: monitoring / operator commands. No writer is built (no trading key needed, works in live mode)
+    and the engine refuses to cycle or start -- it can never trade."""
     from .core.engine import TradingEngine
     clock = None
     if a.now:
@@ -33,7 +35,7 @@ def _engine(a):
             raise SystemExit("--now needs a timezone offset, e.g. 2026-10-27T14:00:00+00:00")
         start = time.monotonic()
         clock = lambda: fixed + dt.timedelta(seconds=time.monotonic() - start)  # noqa: E731
-    return TradingEngine(a.config, a.home, clock=clock)
+    return TradingEngine(a.config, a.home, clock=clock, monitor_only=monitor)
 
 
 def _print(obj):
@@ -176,12 +178,14 @@ def cmd_kill_switch(a):
 
 
 def cmd_status(a):
-    e = _engine(a)
+    from .core import halts
+    e = _engine(a, monitor=True)
     rep = e.status()
     if a.cmd == "health" and getattr(a, "notify", False):
         if rep["heartbeat_stale"]:
             e.db.alert("CRITICAL", "HEARTBEAT_STALE", f"no engine heartbeat for {rep['heartbeat_age_s']} s",
                        ts=e.nows())
+        rep["escalated"] = halts.escalate(e.db, e.nows())    # broker-outage alerts continue if the engine stalls
         rep["notifications_flush"] = e.flush_notifications(e.now())
     _print(rep)
     return 0 if (rep["healthy"] or a.cmd == "status") else 1
@@ -189,7 +193,7 @@ def cmd_status(a):
 
 def cmd_report(a):
     from .core.accounting import account_report
-    e = _engine(a)
+    e = _engine(a, monitor=True)
     r = e.reconcile("report", e.now())
     rep = account_report(e.db, r)
     if e.multi:
@@ -228,7 +232,7 @@ def cmd_portfolio(a):
 
 
 def cmd_exceptions(a):
-    e = _engine(a)
+    e = _engine(a, monitor=True)
     rows = halts.open_exceptions(e.db) if not a.all else [dict(r) for r in e.db.q(
         "SELECT * FROM exceptions ORDER BY last_seen DESC")]
     _print(rows)
@@ -339,7 +343,7 @@ def cmd_data(a):
 
 
 def cmd_notify(a):
-    e = _engine(a)
+    e = _engine(a, monitor=True)
     if a.action == "test":
         e.db.alert(a.severity, "NOTIFY_TEST", a.message, ts=e.nows(), dedupe_minutes=0)
     elif a.action == "crash":
@@ -349,7 +353,7 @@ def cmd_notify(a):
 
 
 def cmd_halt(a):
-    e = _engine(a)
+    e = _engine(a, monitor=True)
     if a.cmd == "halt":
         hid = halts.raise_halt(e.db, "EMERGENCY_HALT", "NEW_EXPOSURE", f"operator {a.operator}: {a.reason}", e.nows())
         print(f"emergency halt {hid} active: no new exposure (nothing is liquidated)")
@@ -424,7 +428,7 @@ def cmd_broker_audit(a):
 def cmd_broker(a):
     if a.action == "reconcile-audit":
         return cmd_broker_audit(a)
-    e = _engine(a)
+    e = _engine(a, monitor=True)
     caps = e.broker.capabilities()
     out = {"broker": e.broker.name, "capabilities": caps}
     try:
@@ -441,13 +445,29 @@ def cmd_broker(a):
 
 
 def cmd_verify(a):
-    e = _engine(a)
+    e = _engine(a, monitor=True)
     from .strategy_modules.vendor import verify_all
     ok, msg = e.db.verify_audit_chain()
     integ = e.db.one("PRAGMA integrity_check")[0]
     _print({"audit_chain": msg, "audit_chain_ok": ok, "sqlite_integrity": integ, "vendored_sources": verify_all(),
             "engine_fingerprint": e.cfg["_fingerprint"], "config_drift": strategy_manager.drift(e.db, e.specs)})
     return 0 if ok and integ == "ok" else 1
+
+
+def cmd_live_gate_check(a):
+    """Every gate of the live writer, exactly as the trading service passes it at start (release, configuration,
+    activation, trading-key scopes via one read-only GET /me, kill switch), without building a writer and without
+    recording an authorization. Needs the service's environment (trading key). Exit 0 = the gate passes now."""
+    from .core.errors import LiveExecutionNotAvailable
+    e = _engine(a, monitor=True)
+    try:
+        auth, _tr, _env = e.live_gate()
+    except LiveExecutionNotAvailable as exc:
+        _print({"gate": "REFUSED", "mode": e.mode, "reason": str(exc)})
+        return 1
+    _print({"gate": "PASS", "mode": e.mode, "release_sha": auth.release_sha, "config_fingerprint": auth.config_fingerprint,
+            "approved_by": auth.approved_by, "expires_at": auth.expires_at})
+    return 0
 
 
 def _offsite_push(cfg, local_file: pathlib.Path, manifest: pathlib.Path, env=None) -> dict:
@@ -733,6 +753,8 @@ def build_parser():
     ra.add_argument("--scratch-home", required=True)
     b.set_defaults(fn=cmd_broker)
     sub.add_parser("verify").set_defaults(fn=cmd_verify)
+    sub.add_parser("live-gate-check", help="check every live-writer gate now (no writer, no authorization recorded)"
+                   ).set_defaults(fn=cmd_live_gate_check)
     bk = sub.add_parser("backup")
     bk.add_argument("--to", required=True)
     bk.add_argument("--offsite", action="store_true", help="also push off-host and verify the pulled-back copy")

@@ -67,13 +67,17 @@ def cycle_portfolio(e, now: dt.datetime) -> dict:
     if exe:
         out["execution"] = {s.isoformat(): execute_portfolio(e, s, v, now, drift) for s, v in sorted(exe.items())}
     last_idle = e.db.get("last_idle_reconcile")
-    if not dec and not exe and (not last_idle or (now - dt.datetime.fromisoformat(last_idle)).total_seconds() >= 900):
+    # while a broker-availability halt is active, re-read every cycle so it clears as soon as the broker answers
+    retry = any(h["kind"] in halts.DEFERRED_NOTIFY for h in halts.active(e.db))
+    if not dec and not exe and (retry or not last_idle
+                                or (now - dt.datetime.fromisoformat(last_idle)).total_seconds() >= 900):
         r = e.reconcile("idle", now)
         e.db.put("last_idle_reconcile", now.isoformat())
         out["reconciliation"] = r.status
     if e.writer is not None and not exe:
         e.executor.abandon_stale(set())
     e.db.put("last_cycle_at", now.isoformat())
+    out["escalated"] = halts.escalate(e.db, nows)
     out["notifications"] = e.flush_notifications(now)
     e.db.heartbeat("engine", {"phase": "cycle", "mode": e.mode, "strategy": "PORTFOLIO", "sleeves": ids}, ts=nows)
     e.log("cycle", **{k: v for k, v in out.items() if k != "at"})

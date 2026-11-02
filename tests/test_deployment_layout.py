@@ -166,15 +166,15 @@ def test_sync_refreshes_the_audit_wrapper_only_when_installed_and_only_after_a_v
     assert s.index('verify_vps.sh" --expect-commit') < i
 
 
-def test_live_verification_builds_the_engine_with_the_services_environment():
-    """2026-10-31/11-01: in live mode `verify_vps.sh --live` started the engine CLI without the trading-key environment,
-    so the writer gate refused and five checks failed while the service was healthy. INVARIANT: in live/pilot mode the
-    engine-state checks and the probe load the environment files of the installed unit, and the running service's
-    LIVE_WRITER_AUTHORIZED (the entry just before its ENGINE_START, same release) is checked from the database."""
+def test_live_verification_uses_monitor_only_checks_and_proves_the_writer_twice():
+    """2026-10-31/11-01: in live mode `verify_vps.sh --live` built a writer through the CLI without the trading key,
+    so five checks failed while the service was healthy. INVARIANT: status/verify/probe build a MONITOR-ONLY engine
+    (ute_te, no trading key needed); in live/pilot mode the write capability is proven by the running service's
+    LIVE_WRITER_AUTHORIZED (the entry just before its ENGINE_START, same release) and by `live-gate-check` run with
+    the environment files of the installed unit."""
     v = (DEP / "verify_vps.sh").read_text(encoding="utf-8")
-    live = v[v.index('if [ $PILOT -ge 1 ]; then\n  ENVFILES='):v.index("te status >")]
+    live = v[v.index("if [ $PILOT -ge 1 ]; then\n  ENVFILES="):v.index("ute_te status >")]
     assert "systemctl show -p EnvironmentFiles --value etoro-ute.service" in live
-    assert "UTE_ENVFILES" in live and '. "$f"' in live
+    assert "UTE_ENVFILES" in live and '. "$f"' in live and "te_svc live-gate-check" in live
     assert "LIVE_WRITER_AUTHORIZED" in live and "ENGINE_START" in live and "release_id()" in live
-    assert v.count("te status >") == 1 and v.count("te verify >") == 1 and "te broker probe" in v
-    assert "ute_te status" not in v and "ute_te verify" not in v
+    assert "ute_te status >" in v and "ute_te verify >" in v and "te_svc status" not in v

@@ -38,7 +38,7 @@ def health(engine) -> dict:
     rep = {
         "at": now.isoformat(), "mode": engine.mode, "live_execution": "DISABLED: live writer implemented but the release gate is closed "
         "(LIVE_RELEASE_ENABLED=False) and mode=live is refused by the schema",
-        "live_release_enabled": LIVE_RELEASE_ENABLED, "write_capability": engine.writer is not None,
+        "live_release_enabled": LIVE_RELEASE_ENABLED, "write_capability": engine.writer is not None, "monitor_only": getattr(engine, "monitor_only", False),
         "broker": engine.broker.name, "broker_capabilities": engine.broker.capabilities(),
         "active_strategy": act if not engine.multi else {"strategy_id": "PORTFOLIO",
                                                           "sleeves": sleeves.weights(db)},

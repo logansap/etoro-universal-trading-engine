@@ -132,9 +132,13 @@ def test_live_order_code_is_isolated_and_never_constructed():
     assert users == ["engine.py", "etoro_live.py"], users
     eng = (src / "core" / "engine.py").read_text(encoding="utf-8")
     assert eng.count("EtoroLiveWriter(") == 1
-    body = eng[eng.index("def _live_writer"):eng.index("def instrument_symbols")]
-    assert "EtoroLiveWriter(" in body and body.index("auth = authorize_live(") < body.index(
-        "EtoroLiveWriter(") and body.index("auth = authorize_supervised(") < body.index("EtoroLiveWriter(")         and "authorization=auth" in body
+    # 2026-11-02: the gates moved into live_gate() (also used by `live-gate-check`, which never builds a writer).
+    # The writer is built only AFTER live_gate() returned the authorization, which is passed into the writer.
+    writer = eng[eng.index("def _live_writer"):eng.index("def live_gate")]
+    gate = eng[eng.index("def live_gate"):eng.index("def instrument_symbols")]
+    assert "EtoroLiveWriter(" in writer and writer.index("auth, tr, env = self.live_gate(env)") < writer.index(
+        "EtoroLiveWriter(") and "authorization=auth" in writer
+    assert "auth = authorize_live(" in gate and "auth = authorize_supervised(" in gate and "EtoroLiveWriter" not in gate
     assert eng.count("_live_writer(") == 2        # its definition and the single obtain_writer closure
 
 
