@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from conftest import DECIDE_AT, EXECUTE_AT
+from conftest import DECIDE_AT, EXECUTE_AT, write_engine_yaml
 from test_autonomous_live import ENV, WRITE, _activation, _live_yaml, auto_env, sent
 from utengine.brokers.simulated import SimulatedBroker
 from utengine.core import halts
@@ -244,7 +244,9 @@ def test_monitor_only_engine_works_in_live_mode_without_the_trading_key_and_cann
     with pytest.raises(LiveExecutionNotAvailable):
         TradingEngine(cfg, tmp_path / "home", env=ro)          # a full engine needs the trading key and activation
     m = TradingEngine(cfg, tmp_path / "home", env=ro, monitor_only=True)
-    assert m.writer is None and m.status()["write_capability"] is False and m.status()["monitor_only"] is True
+    assert m.writer is None and m.status()["monitor_only"] is True
+    # the monitor holds no writer, but the instance it reports on does: the two-writer guards must fail closed
+    assert m.status()["write_capability"] is True
     with pytest.raises(EngineError):
         m.cycle()
     with pytest.raises(EngineError):
@@ -312,3 +314,21 @@ def test_health_unit_path_in_live_mode_without_any_credentials_stopped_hung_and_
     assert kinds.count(("WARNING", "BROKER_UNAVAILABLE_PERSISTENT")) == 1
     assert kinds.count(("CRITICAL", "BROKER_UNAVAILABLE_PERSISTENT")) == 1
     assert sent(env) == []
+
+
+def test_monitor_only_status_keeps_the_two_writer_guard_closed(tmp_path):
+    """REGRESSION (2c88545, multi rehearsal): `status` became monitor-only, so it always printed
+    "write_capability": false and gm_retire.sh rollback would resume Gold Miner next to a live engine. INVARIANT: the
+    CLI status of a live instance reports a write capability; a shadow instance reports none."""
+    import contextlib, io, json as _json
+    from utengine.cli import main as cli
+    def status(cfg):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cli(["--config", str(cfg), "--home", str(tmp_path / ("home-" + cfg.stem)), "status"])
+        return _json.loads(buf.getvalue())
+    live = status(_live_yaml(tmp_path))
+    assert live["mode"] == "live" and live["monitor_only"] is True and live["write_capability"] is True
+    assert '"write_capability": false' not in _json.dumps(live)
+    shadow = status(write_engine_yaml(tmp_path / "shadow.yaml", mode="shadow"))
+    assert shadow["mode"] == "shadow" and shadow["monitor_only"] is True and shadow["write_capability"] is False

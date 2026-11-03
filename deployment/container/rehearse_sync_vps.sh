@@ -305,6 +305,37 @@ check "Gold Miner untouched across the whole rehearsal (files and units)" "[ \"\
 OUTSIDE=$(find / -xdev -user ute -not -path '/home/ute/data*' -not -path '/home/ute/logs*' -not -path '/home/ute/backups/nightly*' -not -path '/proc/*' 2>/dev/null)
 say "  files owned by ute outside /home/ute/{data,logs,backups/nightly}: ${OUTSIDE:-none}"
 check "the service user wrote only to its own data, logs and nightly backups" "[ -z \"$OUTSIDE\" ]"
+
+say "## L. monitor-only health path: engine stopped, hung, restarted (installed units, no broker credentials)"
+DBF=$UTE_DATA/engine.sqlite
+sq() { "$UTE_ROOT/venv/bin/python" -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1], timeout=30); r=c.execute(sys.argv[2]).fetchone(); c.commit(); print(r[0] if r else '')" "$DBF" "$1"; }
+# the timer would otherwise wait heartbeat_stale_seconds; the rehearsal backdates the last heartbeat instead
+backdate() { sq "UPDATE heartbeat SET ts='$1' WHERE component='engine'" >/dev/null; }
+stale_n() { sq "SELECT COUNT(*) FROM alerts WHERE kind='HEARTBEAT_STALE' AND suppressed=0"; }
+orders() { sq "SELECT (SELECT COUNT(*) FROM intents)||'/'||(SELECT COUNT(*) FROM plans)"; }
+health() { systemctl start etoro-ute-health.service >/dev/null 2>&1; systemctl show -p ExecMainStatus --value etoro-ute-health.service; }
+check "the health and crash-hook units load no credential file (ops.env only)" "! systemctl cat etoro-ute-health.service | grep -q credentials && ! systemctl cat etoro-ute-notify-crash.service | grep -q credentials"
+systemctl stop etoro-ute
+HID=0; [ -f "$UTE_CRED" ] && mv "$UTE_CRED" "$UTE_CRED.rehearsal-hidden" && HID=1   # no broker key file at all
+O0=$(orders); S0=$(stale_n); backdate 2026-01-05T14:40:00+00:00
+R1=$(health); R2=$(health); R3=$(health)
+say "  stopped: health exit $R1/$R2/$R3, HEARTBEAT_STALE $S0 -> $(stale_n), intents/plans $O0 -> $(orders), key file hidden=$HID"
+check "stopped engine: the health unit runs with no key file and reports unhealthy (exit 1 each run)" "[ '$R1$R2$R3' = 111 ]"
+check "stopped engine: exactly one HEARTBEAT_STALE alert across three timer runs" "[ \$(stale_n) = \$(( $S0 + 1 )) ]"
+check "stopped engine: health runs create no intents or plans" "[ \$(orders) = $O0 ]"
+[ $HID = 1 ] && mv "$UTE_CRED.rehearsal-hidden" "$UTE_CRED"
+systemctl start etoro-ute; sleep 20
+systemctl kill -s SIGSTOP etoro-ute.service                # hung: the process exists but does nothing
+O1=$(orders); S1=$(stale_n); backdate 2026-01-05T15:10:00+00:00
+R4=$(health); R5=$(health)
+say "  hung: engine unit $(systemctl is-active etoro-ute), health exit $R4/$R5, HEARTBEAT_STALE $S1 -> $(stale_n), intents/plans $O1 -> $(orders)"
+check "hung engine (SIGSTOP, unit still active): one new HEARTBEAT_STALE, no new intents or plans" "[ \$(stale_n) = \$(( $S1 + 1 )) ] && [ \$(orders) = $O1 ] && [ '$R4$R5' = 11 ]"
+systemctl kill -s SIGCONT etoro-ute.service
+systemctl restart etoro-ute; sleep 25
+S2=$(stale_n); health >/dev/null; health >/dev/null
+say "  restarted: HEARTBEAT_STALE $S2 -> $(stale_n), heartbeat $(sq "SELECT ts FROM heartbeat WHERE component='engine'")"
+check "restarted engine: fresh heartbeat, no further HEARTBEAT_STALE alert" "[ \$(stale_n) = $S2 ] && systemctl is-active --quiet etoro-ute"
+check "one engine process after the restart (no duplicate writer)" "[ \$(pgrep -u ute -fc 'trading-engine run --service') = 1 ]"
 [ "$(cat /rehearsal/phase1_failed 2>/dev/null || echo 1)" = 0 ] || FAILED=1
 [ $FAILED -eq 0 ] && say "SYNC REHEARSAL PASSED (all phases)" || say "SYNC REHEARSAL FAILED (see FAIL lines)"
 exit $FAILED

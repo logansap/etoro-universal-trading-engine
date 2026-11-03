@@ -11,6 +11,15 @@ from ..strategy_modules import REGISTRY
 from ..strategy_modules.vendor import verify_all
 
 
+def _write_capability(engine) -> bool:
+    """Whether THIS INSTANCE's trading engine holds a writer. A monitor-only process never builds one, so it reports
+    the configured mode instead (every mode but shadow trades): the two-writer guards (Gold Miner rollback,
+    verify_vps) read this field and must fail closed while a live engine may be running next to the monitor."""
+    if getattr(engine, "monitor_only", False):
+        return engine.mode != "shadow"
+    return engine.writer is not None
+
+
 def health(engine) -> dict:
     db, now = engine.db, engine.now()
     hb = db.one("SELECT * FROM heartbeat WHERE component='engine'")
@@ -38,7 +47,7 @@ def health(engine) -> dict:
     rep = {
         "at": now.isoformat(), "mode": engine.mode, "live_execution": "DISABLED: live writer implemented but the release gate is closed "
         "(LIVE_RELEASE_ENABLED=False) and mode=live is refused by the schema",
-        "live_release_enabled": LIVE_RELEASE_ENABLED, "write_capability": engine.writer is not None, "monitor_only": getattr(engine, "monitor_only", False),
+        "live_release_enabled": LIVE_RELEASE_ENABLED, "write_capability": _write_capability(engine), "monitor_only": getattr(engine, "monitor_only", False),
         "broker": engine.broker.name, "broker_capabilities": engine.broker.capabilities(),
         "active_strategy": act if not engine.multi else {"strategy_id": "PORTFOLIO",
                                                           "sleeves": sleeves.weights(db)},
