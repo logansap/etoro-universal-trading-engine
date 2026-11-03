@@ -206,10 +206,21 @@ def check(db, cfg: dict, home, row: dict, snap, quotes_fn, now: dt.datetime) -> 
             return BLOCK, f"exposure {expo:.2f} + {amt:.2f} > pilot.max_gross_usd {p['max_gross_usd']}"
         day = db.get(f"pilot:day_start:{session}")
         if day is None:
-            prev = db.one("SELECT strategy_equity FROM daily_equity WHERE session < ? ORDER BY session DESC LIMIT 1",
-                          (session,))
-            day = {"equity": float(prev["strategy_equity"]) if prev else equity, "at": nows}
+            # R6 (Gold Miner's daily-loss rule): the day starts at the last recorded close, with the external flows
+            # since THAT close; it is never anchored to a mid-session read that may already contain the day's loss.
+            # Only an engine that holds nothing and has sent nothing today may anchor at its current equity.
+            prev = db.one("SELECT strategy_equity, ts, session FROM daily_equity WHERE session < ? AND "
+                          "strategy_equity IS NOT NULL ORDER BY session DESC LIMIT 1", (session,))
+            holds = db.one("SELECT COUNT(*) c FROM ownership WHERE owner='ENGINE' AND closed_at IS NULL")["c"]
+            if prev is not None:
+                day = {"equity": float(prev["strategy_equity"]), "at": prev["ts"], "basis": f"close {prev['session']}"}
+            elif not holds and not _submitted_in_session(db, session):
+                day = {"equity": equity, "at": nows, "basis": "flat start (no position, nothing sent today)"}
+            else:
+                return HOLD, ("no daily-loss baseline: no recorded close and the engine already holds positions or "
+                              "has sent orders today; no new exposure until a close is recorded")
             db.put(f"pilot:day_start:{session}", day)
+            db.audit("PILOT_DAY_BASELINE", {"session": session, **day}, ts=nows)
         dl = equity - day["equity"] - _external_flows_since(db, day["at"])
         if dl <= -p["daily_loss_stop_usd"]:
             return BLOCK, f"pilot daily loss stop ({dl:+.2f} USD): no new exposure today"

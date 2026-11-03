@@ -39,6 +39,11 @@ class BrokerError(EngineError):
     """A definite broker error (the broker answered)."""
 
 
+class BrokerRateLimited(BrokerError):
+    """HTTP 429 on an order request: refused by the rate limiter before processing (no order exists). Unlike
+    another 4xx the intent stays retryable in its window, within a small budget (R5; Gold Miner's bounded retry)."""
+
+
 class BrokerAmbiguousError(BrokerError):
     """The broker may or may not have processed a write (timeout, connection reset, unreadable success).
     The outcome is UNKNOWN and must be resolved by querying, never by resubmitting."""

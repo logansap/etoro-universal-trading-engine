@@ -235,7 +235,8 @@ class EtoroReadOnly(BrokerReader):
                 # totalFees was 0.0): both are fees to date
                 fees=float(p.get("totalFees", 0.0) or 0.0) + float(p.get("totalExternalFees", 0.0) or 0.0),
                 opened_at=p.get("openDateTime"), exposure_usd=abs(float(expo)) if num(expo) else None,
-                close_rate=float(cr) if num(cr) else None, quote_at=u.get("timestamp")))
+                close_rate=float(cr) if num(cr) else None, quote_at=u.get("timestamp"),
+                order_id=str(p["orderID"]) if p.get("orderID") not in (None, 0, "0") else None))
         mirrors = []
         for m in port.get("mirrors") or []:
             if not isinstance(m, dict):
@@ -270,21 +271,35 @@ class EtoroReadOnly(BrokerReader):
             pid = p.get("positionId", p.get("positionID"))
             if pid is None:
                 continue
+            od = p.get("openingData") if isinstance(p.get("openingData"), dict) else {}
             ex.append({"position_id": str(pid),
                        "amount": num(p.get("marginAccountCurrency", p.get("amount"))),
-                       "units": num(p.get("units", p.get("amountInUnits")))})
+                       "units": num(od.get("units", p.get("remainingUnits", p.get("units", p.get("amountInUnits"))))),
+                       "rate": num(od.get("avgPrice")), "fee": num(od.get("fees"))})
         amounts = [e["amount"] for e in ex]
         filled = round(sum(amounts), 6) if ex and all(a is not None for a in amounts) else None
-        # observed 2026-11-02 on three x1 CFD opens: frozenAmount = margin + the opening fee (0.28/0.28/0.47, the
-        # exact unexplained cash change). Only a small, non-negative difference is taken as a fee.
-        frozen = num(r.get("frozenAmount"))
+        units = [e["units"] for e in ex]
+        filled_units = round(sum(units), 9) if ex and all(u is not None for u in units) else None
+        # The opening fee, from the broker's own fields (full lookups read 2026-11-03): per execution
+        # openingData.fees (0.28 / 0.28 / 0.47), the order's totalCosts, and frozenAmount - margin all agree. In that
+        # order of preference; a frozenAmount difference is used only when small and non-negative.
+        fees = [e["fee"] for e in ex]
         fee = None
-        if frozen is not None and filled is not None and filled > 0 and 0 <= frozen - filled <= 0.05 * filled:
-            fee = round(frozen - filled, 6)
+        if ex and all(f is not None for f in fees):
+            fee = round(sum(fees), 6)
+        elif num(r.get("totalCosts")) is not None and filled:
+            fee = round(num(r.get("totalCosts")), 6)
+        else:
+            frozen = num(r.get("frozenAmount"))
+            if frozen is not None and filled is not None and filled > 0 and 0 <= frozen - filled <= 0.05 * filled:
+                fee = round(frozen - filled, 6)
+        if fee is not None and (fee < 0 or (filled and fee > 0.05 * filled)):
+            fee = None                                     # implausible: never booked as a cost
+        rate = ex[0]["rate"] if len(ex) == 1 else None
         return OrderStatus(order_id=str(r.get("orderId", order_id)), status_id=st.get("id"),
                            error_code=st.get("errorCode"), error_message=str(st.get("errorMessage") or ""),
-                           position_ids=tuple(e["position_id"] for e in ex), filled_amount=filled, filled_units=None,
-                           proceeds=None, rate=None, raw=r, executions=tuple(ex), fee=fee)
+                           position_ids=tuple(e["position_id"] for e in ex), filled_amount=filled,
+                           filled_units=filled_units, proceeds=None, rate=rate, raw=r, executions=tuple(ex), fee=fee)
 
     def order_status(self, order_id, kind):
         if kind == "open":

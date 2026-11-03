@@ -147,7 +147,12 @@ def late_attribute(db, reader, snap, now: str, fill_hook=None) -> list:
     for p in snap.positions:
         if p.position_id in owned:
             continue
-        for row in _candidates(db, p.instrument_id):
+        cands = _candidates(db, p.instrument_id)
+        if getattr(p, "order_id", None):
+            # the portfolio names the opening order: only that engine order can claim it (still confirmed by its
+            # lookup below), and a position whose order is not an engine order is never attributed
+            cands = [r for r in cands if str(r["broker_order_id"]) == str(p.order_id)]
+        for row in cands:
             try:
                 st = reader.order_status(row["broker_order_id"], "open")
             except (BrokerUnavailable, BrokerError):
@@ -190,6 +195,9 @@ def repair_plan(db, reader, position_id: str, intent_id: str) -> dict:
     p = next((x for x in snap.positions if x.position_id == position_id), None)
     if p is None:
         raise EngineError(f"refused: position {position_id} is not listed by the broker now")
+    if getattr(p, "order_id", None) and str(p.order_id) != str(row["broker_order_id"]):
+        raise EngineError(f"refused: the broker lists position {position_id} as opened by order {p.order_id}, not "
+                          f"{row['broker_order_id']}")
     orig = db.one("SELECT * FROM cash_flows WHERE ref=? AND kind='EXTERNAL_TRADE'", (f"pos:{position_id}",))
     if orig is None:
         raise EngineError(f"refused: no EXTERNAL_TRADE flow was booked for position {position_id}")

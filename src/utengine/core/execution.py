@@ -21,7 +21,8 @@ import time
 from . import attribution, halts
 from .accounting import record_flow
 from .canonical import canonical_json, short_id
-from .errors import BrokerAmbiguousError, BrokerError, BrokerUnavailable, EngineError, ShadowWriteViolation
+from .errors import (BrokerAmbiguousError, BrokerError, BrokerRateLimited, BrokerUnavailable, EngineError,
+                     ShadowWriteViolation)
 from .order_planner import resize_opens
 from .order_state import DONE, UNRESOLVED, transition
 from ..brokers.base import STATUS_FILLED, STATUS_PARTIAL, STATUS_PLACED, STATUS_RECEIVED, STATUS_REJECTED
@@ -34,6 +35,8 @@ FINAL_PARTIAL = (9, 10)
 # account re-reads after a fill before booking from the order evidence alone (the order lookup is authoritative;
 # a position recorded from it counts at cost until the portfolio lists it -- see core/attribution.py)
 VISIBILITY_READS = 3
+# HTTP 429 answers per intent before it is REJECTED for the session (each retry waits for the next cycle)
+RATE_LIMIT_BUDGET = 3
 
 
 def intent_id(plan_id: str, leg) -> str:
@@ -96,7 +99,7 @@ class Executor:
             out["status"] = "HALTED_PHASE1"
             return out
         p2 = [l for l in legs if l.phase == 2]
-        held1 = [s for s in out["phase1"] if s in ("AWAITING_APPROVAL", "HELD")]
+        held1 = [s for s in out["phase1"] if s in ("AWAITING_APPROVAL", "HELD", "RATE_LIMITED")]
         if held1:
             out["status"] = held1[0]                     # sell-then-buy: no open before every close is sent
             return out
@@ -132,9 +135,10 @@ class Executor:
                 halts.raise_halt(self.db, "UNRESOLVED_ORDER", "ALL", f"plan {plan_id}: an open is unresolved",
                                  self.now())
                 out["status"] = "HALTED_PHASE2"
-        held2 = [s for s in out["phase2"] if s in ("AWAITING_APPROVAL", "HELD")]
+        held2 = [s for s in out["phase2"] if s in ("AWAITING_APPROVAL", "HELD", "RATE_LIMITED")]
         if out["status"] == "DONE" and held2:
-            out["status"] = "AWAITING_APPROVAL" if "AWAITING_APPROVAL" in held2 else "HELD"
+            out["status"] = ("AWAITING_APPROVAL" if "AWAITING_APPROVAL" in held2 else
+                             "RATE_LIMITED" if "RATE_LIMITED" in held2 and "HELD" not in held2 else "HELD")
         if out["status"] == "DONE" and "REJECTED" in out["phase1"] + out["phase2"]:
             out["status"] = "DONE_WITH_REJECTIONS"
             self.db.alert("WARNING", "ORDER_REJECTED", f"plan {plan_id}: broker rejected a leg (not retried)",
@@ -192,6 +196,14 @@ class Executor:
             else:
                 units = row["units"] if row["action"] == "PARTIAL_CLOSE" else None
                 res = self.writer.submit_close(row["position_id"], row["instrument_id"], units, client_ref=iid)
+        except BrokerRateLimited as exc:
+            n = self.db.one("SELECT COUNT(*) c FROM order_events WHERE intent_id=? AND to_status='RATE_LIMITED'",
+                            (iid,))["c"]
+            if n + 1 >= RATE_LIMIT_BUDGET:
+                transition(self.db, iid, "REJECTED", self.now(), {"reason": f"rate limited {n + 1} times: {exc}"})
+                return "REJECTED"
+            transition(self.db, iid, "RATE_LIMITED", self.now(), {"reason": str(exc), "attempt": n + 1})
+            return "RATE_LIMITED"
         except BrokerAmbiguousError as exc:
             transition(self.db, iid, "UNKNOWN", self.now(), {"reason": f"ambiguous write: {exc}"})
             return self.resolve(dict(self.db.one("SELECT * FROM intents WHERE intent_id=?", (iid,))))
@@ -341,6 +353,9 @@ class Executor:
             return {}
         if len(pids) == 1:
             return {pids[0]: fee}
+        own = {pid: (ex.get(pid) or {}).get("fee") for pid in pids}
+        if all(v is not None for v in own.values()):
+            return own                                     # the broker's per-execution fees
         amt = {pid: (ex.get(pid) or {}).get("amount") or (live[pid].amount if pid in live else None) for pid in pids}
         if any(v is None for v in amt.values()) or not sum(amt.values()):
             return {pids[0]: fee}
@@ -457,7 +472,8 @@ class Executor:
     def abandon_stale(self, live_plan_ids: set) -> int:
         """Intents persisted but never sent, whose plan's window has passed: ABANDONED (never sent later)."""
         n = 0
-        for r in self.db.q("SELECT intent_id, plan_id FROM intents WHERE status='INTENT_PERSISTED'"):
+        for r in self.db.q("SELECT intent_id, plan_id FROM intents WHERE status IN ('INTENT_PERSISTED', "
+                           "'RATE_LIMITED')"):
             if r["plan_id"] not in live_plan_ids:
                 transition(self.db, r["intent_id"], "ABANDONED", self.now(), {"reason": "execution window passed"})
                 n += 1

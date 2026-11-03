@@ -42,6 +42,7 @@ class Position:
     exposure_usd: float | None = None   # broker-reported current exposure (absolute USD), when the broker gives it
     close_rate: float | None = None     # the broker's rate behind unrealized_pnl
     quote_at: str | None = None         # timestamp of that rate
+    order_id: str | None = None         # the order that opened it (eToro positions[].orderID; observed 2026-11-03)
 
     @property
     def value(self) -> float:

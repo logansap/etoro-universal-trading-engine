@@ -66,22 +66,53 @@ def statuses(rig):
 # ------------------------------------------------------------------------------------------------ adapter / fixture
 @pytest.mark.parametrize("sym", ["TLT", "SQQQ", "TQQQ"])
 def test_real_order_lookup_shape_is_parsed(sym):
-    """INVARIANT: the observed orders:lookup payload yields the position id from positionExecutions[], the filled
-    margin, and the opening fee (frozenAmount - margin)."""
-    st = EtoroReadOnly._open_status(FIX["lookups"][sym]["orderId"], FIX["lookups"][sym])
+    """INVARIANT (R9: the FULL real lookup, sanitized): the position id, filled margin, units, average price and the
+    opening fee come from positionExecutions[] / openingData; the three fee fields of the real payload agree."""
+    body = FIX["lookups"][sym]
+    st = EtoroReadOnly._open_status(body["orderId"], body)
     exp = FIX["expected"][sym]
     assert st.status_id == 3 and list(st.position_ids) == exp["position_ids"]
     assert st.filled_amount == pytest.approx(exp["filled_amount"]) and st.fee == pytest.approx(exp["fee"])
+    assert st.filled_units == pytest.approx(exp["units"]) and st.rate == pytest.approx(exp["rate"])
     assert st.executions[0]["position_id"] == exp["position_ids"][0]
+    e = body["positionExecutions"][0]
+    assert body["totalCosts"] == e["openingData"]["fees"] == pytest.approx(body["frozenAmount"] - e["marginAccountCurrency"])
 
 
-def test_a_large_or_negative_frozen_difference_is_never_taken_as_a_fee():
-    """INVARIANT: only a small, non-negative frozenAmount - margin is a fee (a reservation for something else is not
-    booked as a cost)."""
+def _strip_fee_fields(body):
+    b = json.loads(json.dumps(body))
+    b.pop("totalCosts", None)
+    for e in b["positionExecutions"]:
+        e.get("openingData", {}).pop("fees", None)
+    return b
+
+
+def test_fee_fallbacks_and_implausible_values_are_never_booked():
+    """INVARIANT: without openingData.fees the order's totalCosts is used, then a small non-negative frozenAmount -
+    margin; a large or negative difference, or an implausible fee field, is never booked as a cost."""
     base = FIX["lookups"]["TLT"]
+    exp = FIX["expected"]["TLT"]["fee"]
+    no_exec_fee = json.loads(json.dumps(base))
+    no_exec_fee["positionExecutions"][0]["openingData"].pop("fees")
+    assert EtoroReadOnly._open_status(1, no_exec_fee).fee == pytest.approx(exp)          # totalCosts
+    bare = _strip_fee_fields(base)
+    assert EtoroReadOnly._open_status(1, bare).fee == pytest.approx(exp)                 # frozenAmount - margin
     for frozen in (240.0, 400.0):
-        assert EtoroReadOnly._open_status(1, {**base, "frozenAmount": frozen}).fee is None
-    assert EtoroReadOnly._open_status(1, {k: v for k, v in base.items() if k != "frozenAmount"}).fee is None
+        assert EtoroReadOnly._open_status(1, {**bare, "frozenAmount": frozen}).fee is None
+    assert EtoroReadOnly._open_status(1, {k: v for k, v in bare.items() if k != "frozenAmount"}).fee is None
+    huge = json.loads(json.dumps(base))
+    huge["positionExecutions"][0]["openingData"]["fees"] = 100.0
+    assert EtoroReadOnly._open_status(1, huge).fee is None
+
+
+def test_portfolio_order_id_is_parsed(tmp_path):
+    """INVARIANT: the portfolio's positions[].orderID (observed on the real account 2026-11-03) is parsed: it names the
+    order that opened each position (used by late attribution and by the repair)."""
+    rig = rig_nov02(tmp_path, lag=(), fee_bp=0.0)
+    rig.run("P1", legs([(0, TLT, "TLT", 250.0)]))
+    p = next(x for x in rig.reader.account_snapshot().positions if x.instrument_id == TLT)
+    oid = rig.db.one("SELECT broker_order_id FROM intents")["broker_order_id"]
+    assert p.order_id == str(oid)
 
 
 # ------------------------------------------------------------------------------------------------ the 11-02 replay
@@ -325,7 +356,8 @@ def test_repair_reattributes_both_positions_and_reconciliation_becomes_clean(tmp
     assert len(rig.fake.posts()) == posts
 
 
-@pytest.mark.parametrize("case", ["wrong_intent", "acknowledged", "twice", "lookup_does_not_list"])
+@pytest.mark.parametrize("case", ["wrong_intent", "acknowledged", "twice", "lookup_does_not_list",
+                                  "portfolio_names_another_order"])
 def test_repair_refusals(tmp_path, monkeypatch, case):
     """INVARIANT: the repair needs broker order evidence for THAT position and an unacknowledged row; it refuses a
     mismatched intent, an acknowledged position, a second application, and a lookup that does not list it."""
@@ -348,6 +380,10 @@ def test_repair_refusals(tmp_path, monkeypatch, case):
             attribution.repair_plan(rig.db, rig.reader, pid, iid)
         with pytest.raises(EngineError, match="changed"):
             attribution.repair_apply(rig.db, plan, "owner", "twice", rig.clock().isoformat())
+    elif case == "portfolio_names_another_order":
+        rig.fake.positions[int(pid)]["orderID"] = 1
+        with pytest.raises(EngineError, match="opened by order 1"):
+            attribution.repair_plan(rig.db, rig.reader, pid, iid)
     else:
         oid = int(rig.db.one("SELECT broker_order_id FROM intents WHERE intent_id=?", (iid,))["broker_order_id"])
         rig.fake.orders[oid]["execs"] = []
@@ -400,3 +436,74 @@ def test_repair_keeps_the_sleeve_ledger_consistent_in_portfolio_mode(tmp_path, m
         halts.clear(db, h["halt_id"], "owner", "repaired", e.nows())
     r = e.reconcile("check", e.now())
     assert r.clean, r.issues
+
+
+# ------------------------------------------------------------------------------------------------ R5 / R6
+def test_r5_rate_limited_order_is_retried_in_the_window_without_a_duplicate(tmp_path):
+    """INVARIANT (R5): an HTTP 429 on an order creates no order; the intent stays retryable (RATE_LIMITED, the plan is
+    retried next cycle) instead of REJECTED for the session, and is then sent exactly once more."""
+    rig = rig_nov02(tmp_path, lag=(), fee_bp=0.0)
+    rig.fake.inject("http429@open")
+    out = rig.run("P1", legs([(0, TLT, "TLT", 250.0)]))
+    assert out["status"] == "RATE_LIMITED" and statuses(rig) == ["RATE_LIMITED"]
+    assert not rig.fake.orders and not halts.active(rig.db)
+    rig.clock.advance(seconds=60)
+    out = rig.run("P1", legs([(0, TLT, "TLT", 250.0)]))
+    assert out["phase2"] == ["FILLED"] and len(rig.fake.orders) == 1 and len(engine_ids(rig)) == 1
+
+
+def test_r5_rate_limit_budget_then_rejected_and_window_end_abandons(tmp_path):
+    """INVARIANT (R5): the retry budget is bounded (then REJECTED, nothing at the broker); a RATE_LIMITED intent whose
+    window has passed is ABANDONED, never sent later; a close is retried the same way and is never duplicated."""
+    from utengine.core.execution import RATE_LIMIT_BUDGET
+    rig = rig_nov02(tmp_path, lag=(), fee_bp=0.0)
+    rig.fake.inject(*["http429@open"] * RATE_LIMIT_BUDGET)
+    for _ in range(RATE_LIMIT_BUDGET):
+        rig.run("P1", legs([(0, TLT, "TLT", 250.0)]))
+    assert statuses(rig) == ["REJECTED"] and not rig.fake.orders
+    rig.fake.inject("http429@open")
+    rig.run("P2", legs([(0, SQQQ, "SQQQ", 200.0)]))
+    assert rig.db.one("SELECT status FROM intents WHERE plan_id='P2'")["status"] == "RATE_LIMITED"
+    assert rig.ex.abandon_stale(set()) == 1
+    assert rig.db.one("SELECT status FROM intents WHERE plan_id='P2'")["status"] == "ABANDONED"
+    rig.run("P3", legs([(0, TQQQ, "TQQQ", 300.0)]))
+    pid = next(iter(engine_ids(rig)))
+    rig.fake.inject("http429@close")
+    close = [Leg(0, 1, "CLOSE", "TQQQ", TQQQ, 300.0, None, pid, "test")]
+    assert rig.run("P4", close)["status"] == "RATE_LIMITED"
+    assert rig.run("P4", close)["phase1"] == ["FILLED"]
+    assert len(rig.fake.posts("market-close-orders")) == 2 and len(rig.fake.close_orders) == 1
+
+
+def _check(rig, tmp_path, row):
+    return supervision.check(rig.db, rig.guard_cfg, tmp_path / "home", row, rig.reader.account_snapshot(),
+                             rig.reader.quotes, rig.clock())
+
+
+def test_r6_daily_loss_baseline_never_self_anchors_mid_session(tmp_path):
+    """INVARIANT (R6, Gold Miner's rule): with no recorded close, an engine that already holds positions has no
+    daily-loss baseline and holds new opens (it does not anchor at a read that may contain the day's loss); with a
+    recorded close the day starts at that close and external flows after it are not counted as a loss."""
+    rig = rig_nov02(tmp_path, lag=(), fee_bp=0.0)
+    rig.run("P1", legs([(0, TLT, "TLT", 250.0)]))          # flat start: anchored before anything was sent
+    assert rig.db.get(f"pilot:day_start:{rig.clock().date().isoformat()}")["basis"].startswith("flat start")
+    rig.clock.advance(days=1)                               # next session, no close recorded, holding TLT
+    kind, why = _check(rig, tmp_path, {"intent_id": "I1", "action": "OPEN", "amount": 100.0, "instrument_id": SQQQ})
+    assert kind == supervision.HOLD and "no daily-loss baseline" in why
+    rig.clock.advance(days=1)
+    session = rig.clock().date().isoformat()
+    prev = (rig.clock() - dt.timedelta(days=1)).date().isoformat()
+    eq = supervision._strategy_equity(rig.db, rig.reader.account_snapshot())
+    rig.db.x("INSERT INTO daily_equity(session, ts, account_equity, strategy_equity, credit, external_flow, pnl, "
+             "twr_index, hwm, drawdown, exposure, strategy_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+             (prev, (rig.clock() - dt.timedelta(hours=6)).isoformat(), eq, eq + 500.0, 0, 0, 0, 1, 1, 0, "{}", None))
+    kind, why = _check(rig, tmp_path, {"intent_id": "I2", "action": "OPEN", "amount": 100.0, "instrument_id": SQQQ})
+    assert kind == "block" and "daily loss stop" in why    # -500 against the recorded close
+    day = rig.db.get(f"pilot:day_start:{session}")
+    assert day["basis"] == f"close {prev}"
+    rig.db.put(f"pilot:day_start:{session}", None)
+    record_flow(rig.db, "WITHDRAWAL", -500.0, source="test", evidence="owner withdrawal after the close",
+                ref="w1", now=(rig.clock() - dt.timedelta(hours=1)).isoformat())
+    rig.db.x("DELETE FROM engine_state WHERE key=?", (f"pilot:day_start:{session}",))
+    kind, why = _check(rig, tmp_path, {"intent_id": "I3", "action": "OPEN", "amount": 100.0, "instrument_id": SQQQ})
+    assert kind is None, why                               # the withdrawal after the close is not a loss

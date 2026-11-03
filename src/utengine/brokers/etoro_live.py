@@ -27,7 +27,7 @@ import json
 import re
 import uuid
 
-from ..core.errors import BrokerAmbiguousError, BrokerError, ConfigError, LiveExecutionNotAvailable, ReadOnlyViolation
+from ..core.errors import BrokerRateLimited, BrokerAmbiguousError, BrokerError, ConfigError, LiveExecutionNotAvailable, ReadOnlyViolation
 from ..core.security import LiveAuthorization
 from .base import BrokerWriter, SubmitResult
 
@@ -80,6 +80,8 @@ class EtoroLiveWriter(BrokerWriter):
             raise BrokerAmbiguousError(f"POST {path}: no response ({type(exc).__name__})") from exc
         if status >= 500:
             raise BrokerAmbiguousError(f"POST {path}: HTTP {status}; the order may have been accepted")
+        if status == 429:
+            raise BrokerRateLimited(f"POST {path}: HTTP 429 (rate limited; not processed)")
         if status >= 400:
             raise BrokerError(f"POST {path}: HTTP {status} (definite refusal)")
         try:

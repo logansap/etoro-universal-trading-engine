@@ -65,9 +65,10 @@ class FakeEtoro:
         pid = self.seq_pos
         self.seq_pos += 1
         fee = round(amount * self.open_fee_bp / 1e4, 2)
-        self.positions[pid] = {"positionID": pid, "instrumentID": o["iid"], "isBuy": True,
+        # observed 2026-11-03: the opening fee is in totalExternalFees; totalFees (overnight financing) stays 0
+        self.positions[pid] = {"positionID": pid, "orderID": o["id"], "instrumentID": o["iid"], "isBuy": True,
                                "units": round(amount / ask, 6), "amount": round(amount, 2), "leverage": 1,
-                               "openRate": ask, "totalFees": fee,
+                               "openRate": ask, "totalFees": 0.0, "totalExternalFees": fee,
                                "openDateTime": self.clock().isoformat()}
         self.credit = round(self.credit - round(amount, 2) - fee, 6)
         o["filled"] = round(o["filled"] + amount, 6)
@@ -131,10 +132,14 @@ class FakeEtoro:
             names = {1: "Received", 2: "Placed", 3: "Filled", 4: "Rejected", 5: "PartiallyFilled", 9: "CanceledPartiallyFilled"}
             execs = []
             for pid in o["execs"]:
-                amt = (self.positions.get(pid) or {}).get("amount", o["filled"] / max(len(o["execs"]), 1))
+                pos = self.positions.get(pid) or self.ghosts.get(pid) or {}
+                amt = pos.get("amount", o["filled"] / max(len(o["execs"]), 1))
+                # the full lookup shape read from the real account 2026-11-03 (openingData carries units/price/fee)
                 e = {"addedFunds": 0.0, "initialExposureAccountCurrency": amt, "initialExposureAssetCurrency": amt,
                      "investedAmountCurrency": 1, "marginAccountCurrency": amt, "marginAssetCurrency": amt,
-                     "state": "open"}
+                     "remainingUnits": pos.get("units"), "state": "open",
+                     "openingData": {"orderId": o["id"], "units": pos.get("units"), "avgPrice": pos.get("openRate"),
+                                     "fees": pos.get("totalExternalFees", 0.0), "taxes": 0.0, "markup": 0.0}}
                 if not self.omit_execution_ids:
                     e["positionId"] = pid
                 execs.append(e)
@@ -143,6 +148,7 @@ class FakeEtoro:
                     "positionExecutions": execs, "requestedAmount": o["amount"]}
             if self.open_fee_bp:
                 body["frozenAmount"] = round(o["filled"] + o.get("fee", 0.0), 2)
+                body["totalCosts"] = round(o.get("fee", 0.0), 2)
             return self._json(200, body)
         if method == "GET" and path.startswith("/api/v1/trading/info/real/close-orders/"):
             c = self.close_orders.get(int(path.rsplit("/", 1)[1]))
@@ -163,6 +169,8 @@ class FakeEtoro:
             raise ConnectionError("connection reset before the request reached eToro")
         if f == "http400":
             return self._json(400, {"title": "Bad Request"})
+        if f == "http429":                                       # the rate limiter answers before any order exists
+            return self._json(429, {"title": "Too Many Requests"})
         oid = self.seq_order
         self.seq_order += 1
         o = {"id": oid, "ref": headers["x-request-id"], "iid": body["instrumentId"], "amount": body["amount"],
@@ -198,6 +206,8 @@ class FakeEtoro:
             raise ConnectionError("connection reset")
         if f == "http400":
             return self._json(400, {})
+        if f == "http429":
+            return self._json(429, {})
         p = self.positions.get(pid)
         oid = self.seq_order
         self.seq_order += 1

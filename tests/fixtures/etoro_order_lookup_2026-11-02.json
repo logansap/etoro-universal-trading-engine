@@ -1,45 +1,256 @@
 {
-  "_provenance": "SANITIZED from the engine's own order_events of the first live session (2026-11-02, plan Pd030419b55c16fd1aa5dcce), read read-only by the owner. Identifiers (accountId, gcid, orderId, positionId, referenceId) are replaced and amounts are rescaled to a USD 2,000 account; the field names, status ids, settlement, the frozenAmount = margin + opening fee relation (observed 14.9-15.0 bp) and the order of events are the observed ones. The printed payloads were cut at 600 characters inside positionExecutions[0], so its fields after 'marginAs...' are reconstructed: positionId was proven present because the TQQQ fill was attributed through it.",
-  "visibility": {
-    "_note": "observed: the portfolio endpoint did NOT list TLT's and SQQQ's new positions when their lookups said Filled (0.45 s and 2.4 s after lastUpdate); it listed TQQQ's 2.4 s after lastUpdate",
-    "TLT": "not listed at fill", "SQQQ": "not listed at fill", "TQQQ": "listed at fill"
+ "_provenance": "SANITIZED from the FULL orders:lookup responses of the first live session's three fills (2026-11-02), read untruncated from the real account through the read-only eToro connector on 2026-11-03 (R9). Identifiers (accountId, gcid, priceId, orderId, positionId, referenceId) are replaced; money and unit fields are scaled to a USD 2,000 account; prices, status ids, field names, timestamps and the relations frozenAmount = margin + fee = margin + totalCosts = margin + openingData.fees are the observed ones. The portfolio of the same day listed each position with its orderID, totalFees 0.0 and totalExternalFees = the opening fee.",
+ "visibility": {
+  "_note": "observed: the portfolio endpoint did NOT list TLT's and SQQQ's new positions when their lookups said Filled (0.45 s and 2.4 s after lastUpdate); it listed TQQQ's",
+  "TLT": "not listed at fill",
+  "SQQQ": "not listed at fill",
+  "TQQQ": "listed at fill"
+ },
+ "lookups": {
+  "TLT": {
+   "accountId": 0,
+   "gcid": 0,
+   "portfolioId": 0,
+   "orderId": 9000000001,
+   "action": "open",
+   "transaction": "buy",
+   "type": "mkt",
+   "etoroOrderTypeId": 17,
+   "status": {
+    "id": 3,
+    "name": "Filled",
+    "errorCode": 0
+   },
+   "asset": {
+    "symbol": "TLT",
+    "instrumentId": 3020,
+    "currency": "USD",
+    "settlementType": "CFD",
+    "leverage": 1,
+    "side": "long"
+   },
+   "orderCurrency": "usd",
+   "requestedAmount": 250.0,
+   "requestedUnits": 3.052502,
+   "requestedContracts": 3.052502,
+   "frozenAmount": 250.37,
+   "openStopLossRate": 0.0001,
+   "openTakeProfitRate": 0.0,
+   "stopLossType": "fixed",
+   "totalCosts": 0.37,
+   "positionsToClose": [],
+   "positionExecutions": [
+    {
+     "positionId": 9100000002,
+     "state": "open",
+     "investedAmountCurrency": 1,
+     "initialExposureAccountCurrency": 249.99643562,
+     "initialExposureAssetCurrency": 249.99643562,
+     "addedFunds": 0.0,
+     "marginAccountCurrency": 250.0,
+     "marginAssetCurrency": 250.0,
+     "remainingUnits": 3.052087,
+     "remainingContracts": 3.052087,
+     "stopLossRate": 0.0001,
+     "takeProfitRate": 0.0,
+     "openingData": {
+      "openTime": "2026-11-02T14:31:41.627Z",
+      "orderId": 9000000001,
+      "executionTime": "2026-11-02T14:31:41.733Z",
+      "units": 3.052087,
+      "contracts": 3.052087,
+      "avgPrice": 81.91,
+      "avgConversionRate": 1.0,
+      "marketSpread": 0.02,
+      "markup": 0.0,
+      "priceId": 0,
+      "fees": 0.37,
+      "taxes": 0.0
+     }
+    }
+   ],
+   "requestTime": "2026-11-02T14:31:41.627Z",
+   "lastUpdate": "2026-11-02T14:31:41.91Z",
+   "externalOperation": {
+    "type": "publicApi",
+    "data": "00000000-0000-5000-8000-000000000003-0",
+    "referenceId": "00000000-0000-5000-8000-000000000003"
+   },
+   "openActionType": "customer",
+   "requestType": "byAmount"
   },
-  "lookups": {
-    "TLT": {"accountId": 0, "action": "open",
-            "asset": {"currency": "USD", "instrumentId": 3020, "leverage": 1, "settlementType": "CFD", "side": "long", "symbol": "TLT"},
-            "etoroOrderTypeId": 17, "frozenAmount": 250.38, "gcid": 0, "lastUpdate": "2026-11-02T14:31:41.91Z",
-            "openActionType": "customer", "openStopLossRate": 0.0001, "openTakeProfitRate": 0.0, "orderCurrency": "usd",
-            "orderId": 9000000001, "portfolioId": 0,
-            "positionExecutions": [{"addedFunds": 0.0, "initialExposureAccountCurrency": 249.99634, "initialExposureAssetCurrency": 249.99634,
-                                    "investedAmountCurrency": 1, "marginAccountCurrency": 250.0, "marginAssetCurrency": 250.0,
-                                    "positionId": 9100000001}],
-            "status": {"id": 3, "name": "Filled", "errorCode": 0, "errorMessage": null}},
-    "SQQQ": {"accountId": 0, "action": "open",
-             "asset": {"currency": "USD", "instrumentId": 4459, "leverage": 1, "settlementType": "CFD", "side": "long", "symbol": "SQQQ"},
-             "etoroOrderTypeId": 17,
-             "externalOperation": {"data": "00000000-0000-5000-8000-000000000002-0", "referenceId": "00000000-0000-5000-8000-000000000002", "type": "publicApi"},
-             "frozenAmount": 250.38, "gcid": 0, "lastUpdate": "2026-11-02T14:31:43.323Z",
-             "openActionType": "customer", "openStopLossRate": 0.0001, "openTakeProfitRate": 0.0, "orderCurrency": "usd",
-             "orderId": 9000000002, "portfolioId": 0,
-             "positionExecutions": [{"addedFunds": 0.0, "initialExposureAccountCurrency": 250.0, "initialExposureAssetCurrency": 250.0,
-                                     "investedAmountCurrency": 1, "marginAccountCurrency": 250.0, "marginAssetCurrency": 250.0,
-                                     "positionId": 9100000002}],
-             "status": {"id": 3, "name": "Filled", "errorCode": 0, "errorMessage": null}},
-    "TQQQ": {"accountId": 0, "action": "open",
-             "asset": {"currency": "USD", "instrumentId": 4465, "leverage": 1, "settlementType": "CFD", "side": "long", "symbol": "TQQQ"},
-             "etoroOrderTypeId": 17,
-             "externalOperation": {"data": "00000000-0000-5000-8000-000000000003-0", "referenceId": "00000000-0000-5000-8000-000000000003", "type": "publicApi"},
-             "frozenAmount": 417.29, "gcid": 0, "lastUpdate": "2026-11-02T14:31:46.637Z",
-             "openActionType": "customer", "openStopLossRate": 0.0001, "openTakeProfitRate": 0.0, "orderCurrency": "usd",
-             "orderId": 9000000003, "portfolioId": 0,
-             "positionExecutions": [{"addedFunds": 0.0, "initialExposureAccountCurrency": 416.67, "initialExposureAssetCurrency": 416.67,
-                                     "investedAmountCurrency": 1, "marginAccountCurrency": 416.67, "marginAssetCurrency": 416.67,
-                                     "positionId": 9100000003}],
-             "status": {"id": 3, "name": "Filled", "errorCode": 0, "errorMessage": null}}
+  "SQQQ": {
+   "accountId": 0,
+   "gcid": 0,
+   "portfolioId": 0,
+   "orderId": 9000000004,
+   "action": "open",
+   "transaction": "buy",
+   "type": "mkt",
+   "etoroOrderTypeId": 17,
+   "status": {
+    "id": 3,
+    "name": "Filled",
+    "errorCode": 0
+   },
+   "asset": {
+    "symbol": "SQQQ",
+    "instrumentId": 4459,
+    "currency": "USD",
+    "settlementType": "CFD",
+    "leverage": 1,
+    "side": "long"
+   },
+   "orderCurrency": "usd",
+   "requestedAmount": 250.0,
+   "requestedUnits": 6.082724,
+   "requestedContracts": 6.082724,
+   "frozenAmount": 250.37,
+   "openStopLossRate": 0.0001,
+   "openTakeProfitRate": 0.0,
+   "stopLossType": "fixed",
+   "totalCosts": 0.37,
+   "positionsToClose": [],
+   "positionExecutions": [
+    {
+     "positionId": 9100000005,
+     "state": "open",
+     "investedAmountCurrency": 1,
+     "initialExposureAccountCurrency": 249.9999541,
+     "initialExposureAssetCurrency": 249.9999541,
+     "addedFunds": 0.0,
+     "marginAccountCurrency": 250.0,
+     "marginAssetCurrency": 250.0,
+     "remainingUnits": 6.082724,
+     "remainingContracts": 6.082724,
+     "stopLossRate": 0.0001,
+     "takeProfitRate": 0.0,
+     "openingData": {
+      "openTime": "2026-11-02T14:31:43.187Z",
+      "orderId": 9000000004,
+      "executionTime": "2026-11-02T14:31:43.277Z",
+      "units": 6.082724,
+      "contracts": 6.082724,
+      "avgPrice": 41.1,
+      "avgConversionRate": 1.0,
+      "marketSpread": 0.05,
+      "markup": 0.0,
+      "priceId": 0,
+      "fees": 0.37,
+      "taxes": 0.0
+     }
+    }
+   ],
+   "requestTime": "2026-11-02T14:31:43.187Z",
+   "lastUpdate": "2026-11-02T14:31:43.323Z",
+   "externalOperation": {
+    "type": "publicApi",
+    "data": "00000000-0000-5000-8000-000000000006-0",
+    "referenceId": "00000000-0000-5000-8000-000000000006"
+   },
+   "openActionType": "customer",
+   "requestType": "byAmount"
   },
-  "expected": {
-    "TLT": {"position_ids": ["9100000001"], "filled_amount": 250.0, "fee": 0.38},
-    "SQQQ": {"position_ids": ["9100000002"], "filled_amount": 250.0, "fee": 0.38},
-    "TQQQ": {"position_ids": ["9100000003"], "filled_amount": 416.67, "fee": 0.62}
+  "TQQQ": {
+   "accountId": 0,
+   "gcid": 0,
+   "portfolioId": 0,
+   "orderId": 9000000007,
+   "action": "open",
+   "transaction": "buy",
+   "type": "mkt",
+   "etoroOrderTypeId": 17,
+   "status": {
+    "id": 3,
+    "name": "Filled",
+    "errorCode": 0
+   },
+   "asset": {
+    "symbol": "TQQQ",
+    "instrumentId": 4465,
+    "currency": "USD",
+    "settlementType": "CFD",
+    "leverage": 1,
+    "side": "long"
+   },
+   "orderCurrency": "usd",
+   "requestedAmount": 416.67,
+   "requestedUnits": 6.602298,
+   "requestedContracts": 6.602298,
+   "frozenAmount": 417.29,
+   "openStopLossRate": 0.0001,
+   "openTakeProfitRate": 0.0,
+   "stopLossType": "fixed",
+   "totalCosts": 0.62,
+   "positionsToClose": [],
+   "positionExecutions": [
+    {
+     "positionId": 9100000008,
+     "state": "open",
+     "investedAmountCurrency": 1,
+     "initialExposureAccountCurrency": 416.67101502,
+     "initialExposureAssetCurrency": 416.67101502,
+     "addedFunds": 0.0,
+     "marginAccountCurrency": 416.67,
+     "marginAssetCurrency": 416.67,
+     "remainingUnits": 6.602298,
+     "remainingContracts": 6.602298,
+     "stopLossRate": 0.0001,
+     "takeProfitRate": 0.0,
+     "openingData": {
+      "openTime": "2026-11-02T14:31:46.473Z",
+      "orderId": 9000000007,
+      "executionTime": "2026-11-02T14:31:46.563Z",
+      "units": 6.602298,
+      "contracts": 6.602298,
+      "avgPrice": 63.11,
+      "avgConversionRate": 1.0,
+      "marketSpread": 0.05,
+      "markup": 0.0,
+      "priceId": 0,
+      "fees": 0.62,
+      "taxes": 0.0
+     }
+    }
+   ],
+   "requestTime": "2026-11-02T14:31:46.473Z",
+   "lastUpdate": "2026-11-02T14:31:46.637Z",
+   "externalOperation": {
+    "type": "publicApi",
+    "data": "00000000-0000-5000-8000-000000000009-0",
+    "referenceId": "00000000-0000-5000-8000-000000000009"
+   },
+   "openActionType": "customer",
+   "requestType": "byAmount"
   }
+ },
+ "expected": {
+  "TLT": {
+   "position_ids": [
+    "9100000002"
+   ],
+   "filled_amount": 250.0,
+   "fee": 0.37,
+   "units": 3.052087,
+   "rate": 81.91
+  },
+  "SQQQ": {
+   "position_ids": [
+    "9100000005"
+   ],
+   "filled_amount": 250.0,
+   "fee": 0.37,
+   "units": 6.082724,
+   "rate": 41.1
+  },
+  "TQQQ": {
+   "position_ids": [
+    "9100000008"
+   ],
+   "filled_amount": 416.67,
+   "fee": 0.62,
+   "units": 6.602298,
+   "rate": 63.11
+  }
+ }
 }
