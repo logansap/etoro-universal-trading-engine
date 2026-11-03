@@ -32,6 +32,15 @@ class FakeEtoro:
         self.faults = []
         self.requests = []
         self.seq_order, self.seq_pos = 1621000000, 3617000000
+        # production behaviours observed 2026-11-02 (all off by default):
+        self.portfolio_lag = []         # per open, in order: portfolio reads that still return the pre-open state
+                                        # (cash AND positions stale together, as on 2026-11-02)
+        self.visibility_lag = []        # per new position, in order: reads during which it alone is not listed
+        self.stale, self.cache = 0, None
+        self.close_lag = 0              # portfolio reads during which a fully closed position is still listed
+        self.open_fee_bp = 0.0          # opening fee charged with each open (observed 14.9-15.0 bp on x1 CFDs)
+        self.omit_execution_ids = False # positionExecutions[] without position ids
+        self.hidden, self.ghosts = {}, {}
 
     # ------------------------------------------------------------------ helpers
     def inject(self, *f):
@@ -55,13 +64,19 @@ class FakeEtoro:
         bid, ask = self.prices[o["iid"]]
         pid = self.seq_pos
         self.seq_pos += 1
+        fee = round(amount * self.open_fee_bp / 1e4, 2)
         self.positions[pid] = {"positionID": pid, "instrumentID": o["iid"], "isBuy": True,
                                "units": round(amount / ask, 6), "amount": round(amount, 2), "leverage": 1,
-                               "openRate": ask, "totalFees": 0.0,
+                               "openRate": ask, "totalFees": fee,
                                "openDateTime": self.clock().isoformat()}
-        self.credit = round(self.credit - round(amount, 2), 6)
+        self.credit = round(self.credit - round(amount, 2) - fee, 6)
         o["filled"] = round(o["filled"] + amount, 6)
+        o["fee"] = round(o.get("fee", 0.0) + fee, 6)
         o["execs"].append(pid)
+        if self.visibility_lag:
+            self.hidden[pid] = self.visibility_lag.pop(0)
+        if self.portfolio_lag:
+            self.stale = self.portfolio_lag.pop(0)
 
     def advance(self):
         for o in self.orders.values():
@@ -83,15 +98,28 @@ class FakeEtoro:
             return self._json(200, {"gcid": 1, "scopes": ["etoro-public:trade.real:read",
                                                           "etoro-public:market-data:read"]})
         if method == "GET" and path == "/api/v1/trading/info/real/pnl":
+            if self.stale > 0 and self.cache is not None:
+                self.stale -= 1
+                return self._json(200, self.cache)
             pos = []
-            for p in self.positions.values():
+            listed = [p for p in self.positions.values() if self.hidden.get(p["positionID"], 0) <= 0]
+            for pid in [k for k, v in self.hidden.items() if v > 0]:
+                self.hidden[pid] -= 1
+            listed += [g for g in self.ghosts.values()]
+            for pid in list(self.ghosts):
+                self.ghosts[pid]["_reads"] -= 1
+                if self.ghosts[pid]["_reads"] <= 0:
+                    del self.ghosts[pid]
+            for p in listed:
+                p = {k: v for k, v in p.items() if k != "_reads"}
                 bid, ask = self.prices[p["instrumentID"]]
                 pnl = p["units"] * ((bid - p["openRate"]) if p["isBuy"] else (p["openRate"] - ask))
                 pos.append({**p, "unrealizedPnL": {"pnL": round(pnl, 6)}})
             pend = [{"orderID": oid, "instrumentID": o["iid"], "amount": round(o["amount"] - o["filled"], 6),
                      "isBuy": True, "mirrorID": 0} for oid, o in self.orders.items() if o["status"] in (1, 2, 5)]
-            return self._json(200, {"clientPortfolio": {"credit": self.credit, "positions": pos,
-                                                        "ordersForOpen": pend, "orders": [], "mirrors": []}})
+            self.cache = {"clientPortfolio": {"credit": self.credit, "positions": pos,
+                                              "ordersForOpen": pend, "orders": [], "mirrors": []}}
+            return self._json(200, self.cache)
         if method == "GET" and path == "/api/v2/trading/info/orders:lookup":
             o = None
             if "orderId" in q:
@@ -101,10 +129,21 @@ class FakeEtoro:
             if o is None:
                 return self._json(404, {"title": "Not Found"})
             names = {1: "Received", 2: "Placed", 3: "Filled", 4: "Rejected", 5: "PartiallyFilled", 9: "CanceledPartiallyFilled"}
-            return self._json(200, {"orderId": o["id"], "status": {"id": o["status"], "name": names.get(o["status"]),
-                                                                  "errorCode": o["err"], "errorMessage": o["msg"]},
-                                    "positionExecutions": [{"positionId": pid, "state": "open"} for pid in o["execs"]],
-                                    "requestedAmount": o["amount"]})
+            execs = []
+            for pid in o["execs"]:
+                amt = (self.positions.get(pid) or {}).get("amount", o["filled"] / max(len(o["execs"]), 1))
+                e = {"addedFunds": 0.0, "initialExposureAccountCurrency": amt, "initialExposureAssetCurrency": amt,
+                     "investedAmountCurrency": 1, "marginAccountCurrency": amt, "marginAssetCurrency": amt,
+                     "state": "open"}
+                if not self.omit_execution_ids:
+                    e["positionId"] = pid
+                execs.append(e)
+            body = {"orderId": o["id"], "status": {"id": o["status"], "name": names.get(o["status"]),
+                                                   "errorCode": o["err"], "errorMessage": o["msg"]},
+                    "positionExecutions": execs, "requestedAmount": o["amount"]}
+            if self.open_fee_bp:
+                body["frozenAmount"] = round(o["filled"] + o.get("fee", 0.0), 2)
+            return self._json(200, body)
         if method == "GET" and path.startswith("/api/v1/trading/info/real/close-orders/"):
             c = self.close_orders.get(int(path.rsplit("/", 1)[1]))
             return self._json(200, c) if c else self._json(404, {})
@@ -172,7 +211,9 @@ class FakeEtoro:
             released = round(p["amount"] * frac, 2)
             proceeds = round(released + u * (bid - p["openRate"]), 2)
             if frac >= 1 - 1e-9:
-                del self.positions[pid]
+                gone = self.positions.pop(pid)
+                if self.close_lag:
+                    self.ghosts[pid] = {**gone, "_reads": self.close_lag}
                 split = pid
             else:
                 split = self.seq_pos

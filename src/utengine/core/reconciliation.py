@@ -23,7 +23,7 @@ import datetime as dt
 import json
 from dataclasses import dataclass, field
 
-from . import halts
+from . import attribution, halts
 from .accounting import record_flow
 from .canonical import canonical_json, short_id
 from .errors import BrokerError, BrokerUnavailable
@@ -65,7 +65,7 @@ def engine_position_ids(db) -> set:
     return {r["position_id"] for r in db.q("SELECT position_id FROM ownership WHERE owner='ENGINE' AND closed_at IS NULL")}
 
 
-def reconcile(db, reader, cfg: dict, point: str, now: str) -> ReconResult:
+def reconcile(db, reader, cfg: dict, point: str, now: str, fill_hook=None) -> ReconResult:
     tol = cfg["account"]["cash_tolerance_usd"]
     try:
         snap = reader.account_snapshot()
@@ -92,6 +92,11 @@ def reconcile(db, reader, cfg: dict, point: str, now: str) -> ReconResult:
                        "detail": f"{len(snap.mirrors)} copy-trading mirror(s) on the account; not supported"})
     prev = db.one("SELECT * FROM account_snapshots ORDER BY id DESC LIMIT 1")
     snap_id = _save_snapshot(db, snap, point)
+    if prev is not None:
+        # order evidence first (2026-11-02): finish positions recorded before the portfolio listed them, and attribute
+        # a listed position an engine order created; only what neither explains is classified below
+        attribution.complete_visibility(db, snap, now, fill_hook)
+        attribution.late_attribute(db, reader, snap, now, fill_hook)
     owned = {r["position_id"]: dict(r) for r in db.q("SELECT * FROM ownership")}
 
     if prev is None:                                                          # 1. bootstrap
@@ -104,6 +109,7 @@ def reconcile(db, reader, cfg: dict, point: str, now: str) -> ReconResult:
                         evidence=f"available cash at bootstrap, snapshot {snap.raw_sha256[:16]}",
                         ref=f"snap:{snap_id}", now=now, recon_snapshot_id=snap_id)
             db.put("bootstrap_at", snap.as_of)
+            db.put("cash_baseline", {"snapshot_id": snap_id, "credit": snap.credit})
             pre_tx = reader.cash_transactions("")       # everything already in the account is INITIAL_CAPITAL
             db.put("pre_bootstrap_tx", sorted(x.tx_id for x in pre_tx or []))
             db.audit("BOOTSTRAP", {"snapshot_id": snap_id, "credit": snap.credit,
@@ -130,6 +136,11 @@ def reconcile(db, reader, cfg: dict, point: str, now: str) -> ReconResult:
                 issues.append({"kind": "EXTERNAL_POSITION", "subject": p.position_id,
                                "detail": f"position {p.position_id} (instrument {p.instrument_id}, {p.amount:.2f} USD) "
                                          "was not opened by this engine"})
+            elif row["owner"] == "ENGINE" and row["closed_at"] is not None:
+                if not attribution.within_grace(db, attribution.AWAIT_ABSENT, p.position_id, now):
+                    issues.append({"kind": "POSITION_MISMATCH", "subject": p.position_id,
+                                   "detail": f"engine position {p.position_id} was closed by an engine order but the "
+                                             "broker still lists it"})
             elif row["owner"] == "ENGINE" and row["closed_at"] is None and abs(row["units"] - p.units) > 1e-6:
                 issues.append({"kind": "POSITION_MISMATCH", "subject": p.position_id,
                                "detail": f"engine position {p.position_id}: engine {row['units']} units, broker {p.units}"})
@@ -141,6 +152,8 @@ def reconcile(db, reader, cfg: dict, point: str, now: str) -> ReconResult:
                                "detail": f"foreign position {p.position_id} changed units {row['units']} -> {p.units}"})
         for pid, row in owned.items():                                         # 3. missing positions
             if row["closed_at"] is None and pid not in broker_ids:
+                if row["owner"] == "ENGINE" and attribution.within_grace(db, attribution.AWAIT_VISIBLE, pid, now):
+                    continue                       # recorded from its order moments ago; the portfolio lags
                 if row["owner"] == "ENGINE":
                     issues.append({"kind": "POSITION_MISSING", "subject": pid,
                                    "detail": f"engine position {pid} is gone without an engine close"})
@@ -177,12 +190,23 @@ def reconcile(db, reader, cfg: dict, point: str, now: str) -> ReconResult:
         funding.investigate(db, reader, cfg, now)  # older suspense vs transfer / funding evidence (idempotent)
 
     unexplained = 0.0                                                          # 6. cash explanation
-    if prev is not None:
+    lagging = attribution.unlisted(db, snap) if prev is not None else []
+    if lagging:
+        # the snapshot may predate a fill the books already hold: its cash is compared on a later read (the flows
+        # stay unattached); within the grace this is no halt, after it the position is POSITION_MISSING above
+        issues.append({"kind": "AWAITING_VISIBILITY", "subject": ",".join(lagging),
+                       "detail": f"engine position(s) {', '.join(lagging)} recorded from their order are not listed "
+                                 "by the broker yet; cash is reconciled on a later read"})
+    if prev is not None and not lagging:
         flows = db.q("SELECT flow_id, amount FROM cash_flows WHERE recon_snapshot_id IS NULL")
         expected = sum(r["amount"] for r in flows)
-        observed = snap.credit - prev["credit"]
+        # measured from the last snapshot whose cash WAS reconciled (a snapshot skipped as possibly stale is not a
+        # baseline); before rc2 no baseline was stored and the previous snapshot is used, exactly as before
+        base = db.get("cash_baseline") or {"credit": prev["credit"]}
+        observed = snap.credit - base["credit"]
         unexplained = round(observed - expected, 6)
         with db.tx():
+            db.put("cash_baseline", {"snapshot_id": snap_id, "credit": snap.credit})
             for r in flows:
                 db.con.execute("UPDATE cash_flows SET recon_snapshot_id=? WHERE flow_id=?", (snap_id, r["flow_id"]))
             if abs(unexplained) > tol and funding.classify_change(db, reader, cfg, unexplained, snap_id, now):
@@ -225,11 +249,15 @@ def reconcile(db, reader, cfg: dict, point: str, now: str) -> ReconResult:
     eng_ids = engine_position_ids(db)                                          # 7. equity
     eng_pos = [p for p in snap.positions if p.position_id in eng_ids]
     pos_value = sum(p.value for p in eng_pos) if all(p.unrealized_pnl is not None for p in eng_pos) else None
-    strategy_equity = None if pos_value is None else round(snap.available_cash + pos_value, 6)
+    # positions recorded from their order but not listed yet count at cost (their cash has already left)
+    strategy_equity = (None if pos_value is None else
+                       round(snap.available_cash + pos_value + attribution.awaiting_cost(db, snap), 6))
     if strategy_equity is not None and funding.automatic(cfg):
         strategy_equity = round(strategy_equity - funding.suspense_total(db), 6)   # suspense is nobody's capital
 
     for i in issues:
+        if i["kind"] == "AWAITING_VISIBILITY":
+            continue                               # not clean (no new opens), but nothing to halt or page for
         kind = "CASH_DISCREPANCY" if i["kind"] == "CASH_UNEXPLAINED" else i["kind"]
         if i["kind"] == "UNRESOLVED_ORDER":
             # blocks orders through risk; resolution is the executor's job; one WARNING exception per intent

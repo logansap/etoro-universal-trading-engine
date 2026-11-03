@@ -262,11 +262,29 @@ class EtoroReadOnly(BrokerReader):
     def _open_status(order_id, r) -> OrderStatus:
         st = r.get("status") or {}
         execs = r.get("positionExecutions") or r.get("positions") or []
-        pids = tuple(str(p.get("positionId", p.get("positionID"))) for p in execs
-                     if p.get("positionId", p.get("positionID")) is not None)
+        num = lambda v: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None  # noqa: E731
+        ex = []
+        for p in execs:
+            if not isinstance(p, dict):
+                continue
+            pid = p.get("positionId", p.get("positionID"))
+            if pid is None:
+                continue
+            ex.append({"position_id": str(pid),
+                       "amount": num(p.get("marginAccountCurrency", p.get("amount"))),
+                       "units": num(p.get("units", p.get("amountInUnits")))})
+        amounts = [e["amount"] for e in ex]
+        filled = round(sum(amounts), 6) if ex and all(a is not None for a in amounts) else None
+        # observed 2026-11-02 on three x1 CFD opens: frozenAmount = margin + the opening fee (0.28/0.28/0.47, the
+        # exact unexplained cash change). Only a small, non-negative difference is taken as a fee.
+        frozen = num(r.get("frozenAmount"))
+        fee = None
+        if frozen is not None and filled is not None and filled > 0 and 0 <= frozen - filled <= 0.05 * filled:
+            fee = round(frozen - filled, 6)
         return OrderStatus(order_id=str(r.get("orderId", order_id)), status_id=st.get("id"),
                            error_code=st.get("errorCode"), error_message=str(st.get("errorMessage") or ""),
-                           position_ids=pids, filled_amount=None, filled_units=None, proceeds=None, rate=None, raw=r)
+                           position_ids=tuple(e["position_id"] for e in ex), filled_amount=filled, filled_units=None,
+                           proceeds=None, rate=None, raw=r, executions=tuple(ex), fee=fee)
 
     def order_status(self, order_id, kind):
         if kind == "open":

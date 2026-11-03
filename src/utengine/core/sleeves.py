@@ -302,8 +302,12 @@ def sync_flows(db, snapshot, engine_ids: set, now: str) -> list:
     issues = []
     rows = db.q("SELECT * FROM cash_flows WHERE flow_id NOT IN (SELECT flow_id FROM sleeve_flow_posts) ORDER BY ts, "
                 "flow_id")
+    from .attribution import awaiting_flow_ids
+    waiting = awaiting_flow_ids(db)                  # booked from order evidence; the sleeve posting waits for units
     for f in rows:
         kind, amt = f["kind"], float(f["amount"])
+        if f["flow_id"] in waiting:
+            continue
         if kind in TRADE_KINDS:
             issues.append({"kind": "SLEEVE_LEDGER_MISMATCH", "subject": f"flow:{f['flow_id']}",
                            "detail": f"{kind} flow {f['flow_id']} ({amt:+.2f}) has no sleeve attribution"})
@@ -342,6 +346,15 @@ def on_fill(db, row: dict, info: dict, now: str) -> None:
                          symbol=sym, flow_id=flow_id, intent_id=row["intent_id"], detail={"position_id": pid})
                 if flow_id:
                     mark_posted(db, flow_id, "INTENT", now)
+        fee = info.get("fee")
+        if fee:                                  # the broker's opening fee: a cost of the sleeves that bought
+            amt, fee_flow = fee
+            a = split(amt, shares, 6)
+            with db.tx():
+                for s in sorted(a):
+                    post(db, s, "FEE", now, ref=f"fee:{fee_flow}", cash=-a[s], instrument_id=iid, symbol=sym,
+                         flow_id=fee_flow, intent_id=row["intent_id"], detail={"source": "order opening fee"})
+                mark_posted(db, fee_flow, "INTENT", now)
         return
     closed, proceeds, flow_id = info.get("closed_units"), info.get("proceeds"), info.get("flow_id")
     if not closed:

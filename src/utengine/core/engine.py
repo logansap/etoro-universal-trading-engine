@@ -198,7 +198,8 @@ class TradingEngine:
         return sorted(sleeves.weights(self.db)) if self.multi else []
 
     def reconcile(self, point: str, now: dt.datetime | None = None):
-        r = reconcile(self.db, self.broker, self.cfg, point, self.nows(now))
+        r = reconcile(self.db, self.broker, self.cfg, point, self.nows(now),
+                      fill_hook=getattr(getattr(self, "executor", None), "fill_hook", None))
         if self.multi and r.snapshot is not None and sleeves.portfolio(self.db):
             self._reconcile_sleeves(r, self.nows(now))
         self.log("reconciliation", point=point, status=r.status, issues=[i["kind"] for i in r.issues],

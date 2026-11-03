@@ -114,6 +114,10 @@ class OrderStatus:
     proceeds: float | None          # close: cash returned
     rate: float | None
     raw: dict = field(default_factory=dict)
+    # open: per-position broker evidence from the order itself ({position_id, amount, units}); available before
+    # the portfolio endpoint lists the position (observed 2026-11-02: up to >2 s later)
+    executions: tuple = ()
+    fee: float | None = None        # open: fee the broker charged with the order (frozenAmount - margin)
 
     @property
     def final(self) -> bool:

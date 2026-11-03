@@ -118,17 +118,33 @@ def consume(db, intent_id: str, now: str) -> None:
 
 # ----------------------------------------------------------------------------------------------- the submit gate
 def _engine_exposure(db, snap) -> float:
+    """Engine positions at value, plus positions recorded from their order that the portfolio does not list yet (at
+    cost), plus every listed position nobody has attributed yet: exposure is never under-counted."""
+    from .attribution import awaiting_cost
     owned = {r["position_id"] for r in db.q("SELECT position_id FROM ownership WHERE owner='ENGINE' AND closed_at "
                                              "IS NULL")}
-    return round(sum(p.amount + (p.unrealized_pnl or 0.0) for p in snap.positions if p.position_id in owned)
-                 + snap.pending_open_amount, 6)
+    known = {r["position_id"] for r in db.q("SELECT position_id FROM ownership")}
+    return round(sum(p.amount + (p.unrealized_pnl or 0.0) for p in snap.positions
+                     if p.position_id in owned or p.position_id not in known)
+                 + awaiting_cost(db, snap) + snap.pending_open_amount, 6)
 
 
 def _strategy_equity(db, snap) -> float:
-    owned = {r["position_id"] for r in db.q("SELECT position_id FROM ownership WHERE owner='ENGINE'")}
+    """Open engine positions (a closed one a stale portfolio still lists is not counted twice), plus the cost of
+    positions recorded from their order but not listed yet: their cash has already left, so leaving them out would
+    be a phantom loss (2026-11-02: -378.06 tripped the daily loss stop)."""
+    from .attribution import awaiting_cost
+    owned = {r["position_id"] for r in db.q("SELECT position_id FROM ownership WHERE owner='ENGINE' AND closed_at "
+                                             "IS NULL")}
     from .funding import suspense_total
     return round(snap.credit + sum(p.amount + (p.unrealized_pnl or 0.0) for p in snap.positions
-                                   if p.position_id in owned) - suspense_total(db), 6)
+                                   if p.position_id in owned) + awaiting_cost(db, snap) - suspense_total(db), 6)
+
+
+def unattributed(db, snap) -> list:
+    """Listed positions with no ownership record, and EXTERNAL_UNACK ones: their owner is not known yet."""
+    rows = {r["position_id"]: r["owner"] for r in db.q("SELECT position_id, owner FROM ownership")}
+    return sorted(p.position_id for p in snap.positions if rows.get(p.position_id, "EXTERNAL_UNACK") == "EXTERNAL_UNACK")
 
 
 def _external_flows_since(db, since: str) -> float:
@@ -172,6 +188,16 @@ def check(db, cfg: dict, home, row: dict, snap, quotes_fn, now: dt.datetime) -> 
                          f"-{p['cumulative_loss_stop_usd']} USD", nows)
         return BLOCK, f"pilot cumulative loss stop ({cum:+.2f} USD)"
     if row["action"] == "OPEN":
+        from .attribution import unlisted
+        lag = unlisted(db, snap)
+        if lag:
+            # the account read predates an earlier fill: its cash and equity cannot be judged yet (2026-11-02)
+            return HOLD, f"waiting for the broker to list engine position(s) {', '.join(lag)}: no new exposure yet"
+        un = unattributed(db, snap)
+        if un:
+            # risk-increasing only (Gold Miner's rule): closes and reconciliation continue; the open waits (HELD,
+            # retried in this window) instead of being measured against an equity figure that is not known
+            return HOLD, f"ownership of position(s) {', '.join(un)} not established yet: no new exposure"
         amt = float(row["amount"] or 0.0)
         if amt > p["max_order_usd"] + 1e-9:
             return BLOCK, f"amount {amt:.2f} > pilot.max_order_usd {p['max_order_usd']}"

@@ -68,6 +68,8 @@ def cmd_config(a):
 
 
 def cmd_account(a):
+    if a.action == "attribute-fill":
+        return cmd_account_attribute(a)
     e = _engine(a)
     now = e.nows()
     if a.action == "reconcile":
@@ -91,6 +93,27 @@ def cmd_account(a):
         print(f"position {a.position_id} acknowledged as external (excluded, never touched)")
         return 0
     raise SystemExit(2)
+
+
+def cmd_account_attribute(a):
+    """Re-attribute an EXTERNAL_UNACK position that an engine order created (2026-11-02). Read-only broker calls;
+    a dry run unless --apply. Monitor-only engine: no trading credential is needed or used."""
+    from .core import attribution, sleeves
+    e = _engine(a, monitor=True)
+    try:
+        plan = attribution.repair_plan(e.db, e.broker, a.position_id, a.intent)
+    except EngineError as exc:
+        print(str(exc))
+        return 1
+    _print({"plan": plan, "apply": bool(a.apply)})
+    if not a.apply:
+        print("dry run: nothing changed. Re-run with --apply to record it.")
+        return 0
+    out = attribution.repair_apply(e.db, plan, a.operator, a.note, e.nows(),
+                                   fill_hook=sleeves.on_fill if e.multi else None)
+    _print(out)
+    print("Next: classify the fee discrepancy (`account resolve --classify FEE`), reconcile, then `halt-clear`.")
+    return 0
 
 
 def cmd_strategy(a):
@@ -607,6 +630,13 @@ def build_parser():
     x.add_argument("--position-id", required=True)
     x.add_argument("--operator", required=True)
     x.add_argument("--note", required=True)
+    af = acs.add_parser("attribute-fill", help="re-attribute an EXTERNAL_UNACK position an engine order created "
+                                               "(broker order evidence required; dry run unless --apply)")
+    af.add_argument("--position-id", required=True)
+    af.add_argument("--intent", required=True)
+    af.add_argument("--operator", required=True)
+    af.add_argument("--note", required=True)
+    af.add_argument("--apply", action="store_true")
     ac.set_defaults(fn=cmd_account)
     st = sub.add_parser("strategy")
     sts = st.add_subparsers(dest="action", required=True)

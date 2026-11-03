@@ -18,7 +18,7 @@ import datetime as dt
 import json
 import time
 
-from . import halts
+from . import attribution, halts
 from .accounting import record_flow
 from .canonical import canonical_json, short_id
 from .errors import BrokerAmbiguousError, BrokerError, BrokerUnavailable, EngineError, ShadowWriteViolation
@@ -31,6 +31,9 @@ from ..brokers.base import STATUS_FILLED, STATUS_PARTIAL, STATUS_PLACED, STATUS_
 IN_FLIGHT = (STATUS_RECEIVED, STATUS_PLACED, 6, 11, 12)
 FINAL_CANCELED = (7, 8, 9, 10)
 FINAL_PARTIAL = (9, 10)
+# account re-reads after a fill before booking from the order evidence alone (the order lookup is authoritative;
+# a position recorded from it counts at cost until the portfolio lists it -- see core/attribution.py)
+VISIBILITY_READS = 3
 
 
 def intent_id(plan_id: str, leg) -> str:
@@ -157,6 +160,7 @@ class Executor:
         except (BrokerUnavailable, BrokerError) as exc:
             transition(self.db, iid, "ABANDONED", self.now(), {"reason": f"pre-submit read failed: {exc}"})
             return "ABANDONED"
+        attribution.complete_visibility(self.db, snap, self.now(), self.fill_hook)   # earlier fills now listed
         pre = {"positions": {p.position_id: p.units for p in snap.positions},
                "pending": [o.order_id for o in snap.pending_orders], "credit": snap.credit, "at": snap.as_of}
         if self.supervisor is not None:
@@ -208,9 +212,16 @@ class Executor:
                 st = None
             if st is not None:
                 if st.status_id == STATUS_FILLED:
-                    self.apply_fill(row, st)
-                    transition(self.db, iid, "FILLED", self.now(), {"order_status": st.raw})
-                    return "FILLED"
+                    if self.apply_fill(row, st):
+                        transition(self.db, iid, "FILLED", self.now(), {"order_status": st.raw})
+                        return "FILLED"
+                    # the broker says FILLED but names no position this engine can attribute yet: never FILLED
+                    # without ownership (2026-11-02). Keep polling; unresolved after the budget -> halt, and the
+                    # next cycle (or reconciliation) attributes it when the order evidence or the position appears.
+                    if status in ("ACKNOWLEDGED", "UNKNOWN"):
+                        transition(self.db, iid, "PENDING", self.now(), {"broker_status": st.status_id,
+                                   "reason": "filled, but no attributable position yet"})
+                        status = "PENDING"
                 if st.status_id == STATUS_REJECTED:
                     transition(self.db, iid, "REJECTED", self.now(),
                                {"error_code": st.error_code, "error": st.error_message})
@@ -233,31 +244,65 @@ class Executor:
         return status                                     # still unresolved: caller halts; resolve() later
 
     # ------------------------------------------------------------------ effects of fills
-    def apply_fill(self, row: dict, st) -> None:
-        now = self.now()
+    def _snapshot_until(self, done):
+        """Re-read the account until done(snapshot) or the poll budget is spent. eToro's portfolio lags its order
+        lookup (2026-11-02: two of three new positions were not listed when the lookup said FILLED); Gold Miner
+        confirmed every close the same way, with bounded re-reads of the positions."""
         snap = self.reader.account_snapshot()
-        live = {p.position_id: p for p in snap.positions}
-        strategy_id = json.loads(row["result"] or "{}").get("strategy_id") if row["result"] else None
+        for _ in range(max(min(self.poll_n, VISIBILITY_READS) - 1, 0)):
+            if done(snap):
+                break
+            if self.poll_s:
+                self.sleep(self.poll_s)
+            snap = self.reader.account_snapshot()
+        return snap
+
+    def apply_fill(self, row: dict, st) -> bool:
+        """Book a fill from broker evidence. OPEN: True once every position the order created is recorded as the
+        engine's (with the portfolio's units, or from the order lookup while the portfolio does not list it yet);
+        False when the order names no position and no unique new position matches -- the caller must then NOT mark
+        the intent FILLED. CLOSE: a filled full close closes the ownership even if a stale portfolio still lists it."""
+        now = self.now()
         if row["action"] == "OPEN":
-            for pid in st.position_ids:
-                if self.db.one("SELECT 1 FROM ownership WHERE position_id=?", (pid,)):
-                    continue
+            ex = {e["position_id"]: e for e in (getattr(st, "executions", ()) or ())}
+            pids = list(st.position_ids)
+            snap = self._snapshot_until(lambda sn: bool(pids) and all(
+                pid in {p.position_id for p in sn.positions} for pid in pids))
+            live = {p.position_id: p for p in snap.positions}
+            if not pids:
+                m = self._match_new_open(row, snap)
+                if m is None:
+                    return False
+                pids = [m.position_id]
+            fees = self._split_fee(st, pids, ex, live)
+            for pid in pids:
                 p = live.get(pid)
-                if p is None:
-                    continue                               # not visible yet: reconciliation will flag it
-                with self.db.tx():
-                    self.db.con.execute("INSERT INTO ownership VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                                        (pid, p.instrument_id, row["symbol"], "ENGINE", strategy_id, row["intent_id"],
-                                         p.units, p.amount, now, None, None, f"opened by order {row['broker_order_id']}"))
-                    fid = record_flow(self.db, "TRADE_OPEN", -p.amount, source="broker-order",
-                                      evidence=f"order {row['broker_order_id']} position {pid}", ref=f"open:{pid}",
-                                      now=now)
-                    if self.fill_hook:
-                        self.fill_hook(self.db, row, {"opened": [(pid, p.units, p.amount, fid)]}, now)
-            return
+                if p is not None:
+                    attribution.record_open(self.db, row, pid, instrument_id=p.instrument_id, amount=p.amount,
+                                            units=p.units, fee=fees.get(pid), visible=True, now=now,
+                                            fill_hook=self.fill_hook, evidence="order lookup + portfolio")
+                    continue
+                amount = (ex.get(pid) or {}).get("amount")
+                if amount is None:
+                    amount = st.filled_amount if len(pids) == 1 and st.filled_amount else row["amount"]
+                attribution.record_open(self.db, row, pid, instrument_id=row["instrument_id"], amount=float(amount),
+                                        units=(ex.get(pid) or {}).get("units"), fee=fees.get(pid), visible=False,
+                                        now=now, fill_hook=self.fill_hook,
+                                        evidence="order lookup positionExecutions; the portfolio did not list it yet")
+            return True
         pid = row["position_id"]
         own = self.db.one("SELECT * FROM ownership WHERE position_id=?", (pid,))
         foreign = own is not None and own["owner"] != "ENGINE"
+        before = own["units"] if own and own["closed_at"] is None else None
+        full = row["action"] == "CLOSE" and st.status_id == STATUS_FILLED
+        if full:
+            snap = self._snapshot_until(lambda sn: pid not in {p.position_id for p in sn.positions})
+        elif before is not None and st.filled_units:
+            snap = self._snapshot_until(lambda sn: {p.position_id: p.units for p in sn.positions}.get(pid, 0.0)
+                                        < before - 1e-9)
+        else:
+            snap = self.reader.account_snapshot()
+        live = {p.position_id: p for p in snap.positions}
         fid = None
         if st.proceeds is not None:
             # closing a FOREIGN position (takeover only) brings capital into the engine's scope: it is a capital
@@ -265,18 +310,52 @@ class Executor:
             fid = record_flow(self.db, "TAKEOVER_PROCEEDS" if foreign else "TRADE_CLOSE", st.proceeds,
                               source="broker-order", evidence=f"close order {row['broker_order_id']} proceeds",
                               ref=f"close:{row['broker_order_id'] or row['intent_id']}", now=now)
-        before = own["units"] if own and own["closed_at"] is None else None
-        after = live[pid].units if pid in live else 0.0
+        if full:
+            after = 0.0                                    # the close order is authoritative: the position is closed
+        elif pid in live and before is not None and live[pid].units < before - 1e-9:
+            after = live[pid].units
+        elif before is not None and st.filled_units:
+            after = max(round(before - float(st.filled_units), 9), 0.0)
+        else:
+            after = live[pid].units if pid in live else 0.0
         with self.db.tx():
-            if pid in live:
-                self.db.con.execute("UPDATE ownership SET units=?, amount=? WHERE position_id=?",
-                                    (live[pid].units, live[pid].amount, pid))
+            if after > 1e-9 and own is not None:
+                same = pid in live and abs(live[pid].units - after) <= 1e-9
+                amt = live[pid].amount if same else (own["amount"] * after / own["units"] if own["units"]
+                                                     else own["amount"])
+                self.db.con.execute("UPDATE ownership SET units=?, amount=? WHERE position_id=?", (after, amt, pid))
             elif own and own["closed_at"] is None:
                 self.db.con.execute("UPDATE ownership SET closed_at=?, close_intent_id=? WHERE position_id=?",
                                     (now, row["intent_id"], pid))
+                if pid in live:                            # filled, but the portfolio still lists it
+                    self.db.put(attribution.AWAIT_ABSENT + pid, {"since": now, "intent_id": row["intent_id"]})
             if self.fill_hook and before is not None and not foreign:
                 self.fill_hook(self.db, row, {"closed_units": round(before - after, 9), "proceeds": st.proceeds,
                                               "flow_id": fid}, now)
+        return True
+
+    @staticmethod
+    def _split_fee(st, pids, ex, live) -> dict:
+        fee = getattr(st, "fee", None)
+        if not fee:
+            return {}
+        if len(pids) == 1:
+            return {pids[0]: fee}
+        amt = {pid: (ex.get(pid) or {}).get("amount") or (live[pid].amount if pid in live else None) for pid in pids}
+        if any(v is None for v in amt.values()) or not sum(amt.values()):
+            return {pids[0]: fee}
+        tot = sum(amt.values())
+        return {pid: round(fee * a / tot, 6) for pid, a in amt.items()}
+
+    def _match_new_open(self, row: dict, snap):
+        """The single new, unowned position of this instrument and amount that did not exist before submission."""
+        pre = json.loads(row["pre_submit"] or "{}")
+        owned = {r["position_id"] for r in self.db.q("SELECT position_id FROM ownership")}
+        tol = max(0.02, 0.01 * (row["amount"] or 0))
+        new_pos = [p for p in snap.positions if p.position_id not in pre.get("positions", {})
+                   and p.position_id not in owned and p.instrument_id == row["instrument_id"]
+                   and abs(p.amount - row["amount"]) <= tol]
+        return new_pos[0] if len(new_pos) == 1 else None
 
     # ------------------------------------------------------------------ recovery
     def resolve(self, row: dict) -> str:

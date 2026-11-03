@@ -1,0 +1,45 @@
+{
+  "_provenance": "SANITIZED from the engine's own order_events of the first live session (2026-11-02, plan Pd030419b55c16fd1aa5dcce), read read-only by the owner. Identifiers (accountId, gcid, orderId, positionId, referenceId) are replaced and amounts are rescaled to a USD 2,000 account; the field names, status ids, settlement, the frozenAmount = margin + opening fee relation (observed 14.9-15.0 bp) and the order of events are the observed ones. The printed payloads were cut at 600 characters inside positionExecutions[0], so its fields after 'marginAs...' are reconstructed: positionId was proven present because the TQQQ fill was attributed through it.",
+  "visibility": {
+    "_note": "observed: the portfolio endpoint did NOT list TLT's and SQQQ's new positions when their lookups said Filled (0.45 s and 2.4 s after lastUpdate); it listed TQQQ's 2.4 s after lastUpdate",
+    "TLT": "not listed at fill", "SQQQ": "not listed at fill", "TQQQ": "listed at fill"
+  },
+  "lookups": {
+    "TLT": {"accountId": 0, "action": "open",
+            "asset": {"currency": "USD", "instrumentId": 3020, "leverage": 1, "settlementType": "CFD", "side": "long", "symbol": "TLT"},
+            "etoroOrderTypeId": 17, "frozenAmount": 250.38, "gcid": 0, "lastUpdate": "2026-11-02T14:31:41.91Z",
+            "openActionType": "customer", "openStopLossRate": 0.0001, "openTakeProfitRate": 0.0, "orderCurrency": "usd",
+            "orderId": 9000000001, "portfolioId": 0,
+            "positionExecutions": [{"addedFunds": 0.0, "initialExposureAccountCurrency": 249.99634, "initialExposureAssetCurrency": 249.99634,
+                                    "investedAmountCurrency": 1, "marginAccountCurrency": 250.0, "marginAssetCurrency": 250.0,
+                                    "positionId": 9100000001}],
+            "status": {"id": 3, "name": "Filled", "errorCode": 0, "errorMessage": null}},
+    "SQQQ": {"accountId": 0, "action": "open",
+             "asset": {"currency": "USD", "instrumentId": 4459, "leverage": 1, "settlementType": "CFD", "side": "long", "symbol": "SQQQ"},
+             "etoroOrderTypeId": 17,
+             "externalOperation": {"data": "00000000-0000-5000-8000-000000000002-0", "referenceId": "00000000-0000-5000-8000-000000000002", "type": "publicApi"},
+             "frozenAmount": 250.38, "gcid": 0, "lastUpdate": "2026-11-02T14:31:43.323Z",
+             "openActionType": "customer", "openStopLossRate": 0.0001, "openTakeProfitRate": 0.0, "orderCurrency": "usd",
+             "orderId": 9000000002, "portfolioId": 0,
+             "positionExecutions": [{"addedFunds": 0.0, "initialExposureAccountCurrency": 250.0, "initialExposureAssetCurrency": 250.0,
+                                     "investedAmountCurrency": 1, "marginAccountCurrency": 250.0, "marginAssetCurrency": 250.0,
+                                     "positionId": 9100000002}],
+             "status": {"id": 3, "name": "Filled", "errorCode": 0, "errorMessage": null}},
+    "TQQQ": {"accountId": 0, "action": "open",
+             "asset": {"currency": "USD", "instrumentId": 4465, "leverage": 1, "settlementType": "CFD", "side": "long", "symbol": "TQQQ"},
+             "etoroOrderTypeId": 17,
+             "externalOperation": {"data": "00000000-0000-5000-8000-000000000003-0", "referenceId": "00000000-0000-5000-8000-000000000003", "type": "publicApi"},
+             "frozenAmount": 417.29, "gcid": 0, "lastUpdate": "2026-11-02T14:31:46.637Z",
+             "openActionType": "customer", "openStopLossRate": 0.0001, "openTakeProfitRate": 0.0, "orderCurrency": "usd",
+             "orderId": 9000000003, "portfolioId": 0,
+             "positionExecutions": [{"addedFunds": 0.0, "initialExposureAccountCurrency": 416.67, "initialExposureAssetCurrency": 416.67,
+                                     "investedAmountCurrency": 1, "marginAccountCurrency": 416.67, "marginAssetCurrency": 416.67,
+                                     "positionId": 9100000003}],
+             "status": {"id": 3, "name": "Filled", "errorCode": 0, "errorMessage": null}}
+  },
+  "expected": {
+    "TLT": {"position_ids": ["9100000001"], "filled_amount": 250.0, "fee": 0.38},
+    "SQQQ": {"position_ids": ["9100000002"], "filled_amount": 250.0, "fee": 0.38},
+    "TQQQ": {"position_ids": ["9100000003"], "filled_amount": 416.67, "fee": 0.62}
+  }
+}
