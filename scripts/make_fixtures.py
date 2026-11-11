@@ -3,10 +3,10 @@
   python scripts/make_fixtures.py
 
 Sources (never modified):
-  D:/TSR-paper-data/snapshots/*.parquet            Yahoo adjusted daily bars used by the championship decisions
-  D:/TSR-paper-data-x60-sqqq/snapshots/*.parquet   ... used by the #60-SQQQ experiment decisions
-  D:/TSR-paper-data/paper.sqlite, D:/TSR-paper-data-x60-sqqq/paper.sqlite   recorded decisions (opened mode=ro)
-  D:/TSR-evidence/strategy_60/tables/LONG_100000/orders.csv   native LEAN #60 orders -> ONLY (session, symbol,
+  D:/Trading/Research-Engine/_local/paper-data/main/snapshots/*.parquet            Yahoo adjusted daily bars used by the championship decisions
+  D:/Trading/Research-Engine/_local/paper-data/x60-sqqq/snapshots/*.parquet   ... used by the #60-SQQQ experiment decisions
+  D:/Trading/Research-Engine/_local/paper-data/main/paper.sqlite, D:/Trading/Research-Engine/_local/paper-data/x60-sqqq/paper.sqlite   recorded decisions (opened mode=ro)
+  D:/Trading/Research-Engine/_local/evidence/strategy_60/tables/LONG_100000/orders.csv   native LEAN #60 orders -> ONLY (session, symbol,
       side) is kept: no prices or quantities leave the evidence store (QuantConnect data stays quarantined).
 The bar fixtures are Yahoo-derived and are private test data; do not redistribute.
 """
@@ -22,11 +22,11 @@ import pandas as pd
 OUT = pathlib.Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 S60 = ["SPY", "QQQ", "TQQQ", "UVXY", "TECL", "SPXL", "SQQQ", "TECS", "BSV"]
 SNAPS = {
-    "92a8f8be7497b1e9": ("D:/TSR-paper-data/snapshots", "all"),      # championship 2026-10-22
-    "a5c93f2b9a4e0b7c": ("D:/TSR-paper-data/snapshots", "all"),      # championship 2026-10-23
-    "930795e32531bedc": ("D:/TSR-paper-data/snapshots", "all"),      # championship 2026-10-26
-    "53f150d71cc1e074": ("D:/TSR-paper-data-x60-sqqq/snapshots", "60"),  # experiment 2026-10-23
-    "45fe197a87f7adb2": ("D:/TSR-paper-data-x60-sqqq/snapshots", "60"),  # experiment 2026-10-26
+    "92a8f8be7497b1e9": ("D:/Trading/Research-Engine/_local/paper-data/main/snapshots", "all"),      # championship 2026-10-22
+    "a5c93f2b9a4e0b7c": ("D:/Trading/Research-Engine/_local/paper-data/main/snapshots", "all"),      # championship 2026-10-23
+    "930795e32531bedc": ("D:/Trading/Research-Engine/_local/paper-data/main/snapshots", "all"),      # championship 2026-10-26
+    "53f150d71cc1e074": ("D:/Trading/Research-Engine/_local/paper-data/x60-sqqq/snapshots", "60"),  # experiment 2026-10-23
+    "45fe197a87f7adb2": ("D:/Trading/Research-Engine/_local/paper-data/x60-sqqq/snapshots", "60"),  # experiment 2026-10-26
 }
 
 
@@ -47,8 +47,8 @@ def write_snap(sha, src, which):
 
 def decisions():
     out = []
-    for db, pids in (("D:/TSR-paper-data/paper.sqlite", ("P60-ORIG", "P60-ETORO", "P529-ORIG")),
-                     ("D:/TSR-paper-data-x60-sqqq/paper.sqlite", ("X60SQQQ-ETORO",))):
+    for db, pids in (("D:/Trading/Research-Engine/_local/paper-data/main/paper.sqlite", ("P60-ORIG", "P60-ETORO", "P529-ORIG")),
+                     ("D:/Trading/Research-Engine/_local/paper-data/x60-sqqq/paper.sqlite", ("X60SQQQ-ETORO",))):
         c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
         q = (f"SELECT portfolio_id, session, status, data_snapshot, nav_at_close, rationale, targets FROM decisions "
              f"WHERE portfolio_id IN ({','.join('?' * len(pids))}) ORDER BY session, portfolio_id")
@@ -60,7 +60,7 @@ def decisions():
 
 
 def lean_targets():
-    o = pd.read_csv("D:/TSR-evidence/strategy_60/tables/LONG_100000/orders.csv")
+    o = pd.read_csv("D:/Trading/Research-Engine/_local/evidence/strategy_60/tables/LONG_100000/orders.csv")
     o = o[(o.quantity > 0) & (o.tag.fillna("") != "Liquidated")]
     seq = o.groupby("signal_session").symbol.agg(lambda s: "|".join(sorted(set(s))))
     seq.rename("bought").to_csv(OUT / "lean_native_60_buys.csv")

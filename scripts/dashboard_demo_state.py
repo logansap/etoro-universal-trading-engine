@@ -51,7 +51,7 @@ def main(out: str):
     env.clock.advance(minutes=1)
     e.reconcile("demo", env.clock())
     T.preview(e, env.clock())
-    ev = pathlib.Path("D:/TSR-evidence/multi_rehearsal_2026-10-29/multi_rehearsal_artifacts/gm_retirement")
+    ev = pathlib.Path("D:/Trading/Research-Engine/_local/evidence/multi_rehearsal_2026-10-29/multi_rehearsal_artifacts/gm_retirement")
     if ev.exists():
         from utengine.core import retirement
         for f in sorted(ev.glob("*.json")):

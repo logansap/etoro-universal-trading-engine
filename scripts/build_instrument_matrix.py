@@ -5,7 +5,7 @@ Outputs docs/data/etoro_instrument_matrix_2026-10-29.json (machine-readable). No
 2026-10-28/29 no authorized live eToro read path existed for this engine (no read-only key; the eToro connector is
 invalidated; the Gold Miner audit command returns positions/cash/history only). Evidence used, all read-only:
   A. Gold Miner account instrument search, REAL account, 2026-08-26 14:26-14:32Z
-     (D:/AI-Gold-Miner-Trading-Engine/reports/execution_coverage.json `live_tradability`): instrumentId,
+     (D:/Trading/Gold-Miner-Engine/reports/execution_coverage.json `live_tradability`): instrumentId,
      isBuyEnabled, isCurrentlyTradable, isDelisted, bid/ask, rate_date; "no non-crypto exact/US match" = absent.
   B. Gold Miner eligibility call, REAL account, 2026-08-27 (POST /api/v2/trading/info/eligibility), documented in
      src/gold_miner_engine/execution/settlement_types.py and risk/fundability.py for all 26 of its instruments:
@@ -26,8 +26,8 @@ import sqlite3
 import statistics
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-GM = pathlib.Path("D:/AI-Gold-Miner-Trading-Engine")
-PAPER = pathlib.Path("D:/TSR-evidence/paper_audit_2026-10-28/championship_snapshot.sqlite")
+GM = pathlib.Path("D:/Trading/Gold-Miner-Engine")
+PAPER = pathlib.Path("D:/Trading/Research-Engine/_local/evidence/paper_audit_2026-10-28/championship_snapshot.sqlite")
 UNIVERSE_529 = ["UVXY", "TECL", "SOXL", "SPXL", "LABU", "SVIX", "SVXY", "SQQQ", "TLT", "BIL", "BTAL", "TQQQ",
                 "TECS", "SOXS", "QQQ", "PSQ", "QLD", "BSV", "UVIX"]
 TARGETS_60 = ["TQQQ", "UVXY", "TECL", "SPXL", "SQQQ", "BSV"]           # after TECS -> SQQQ

@@ -1,6 +1,6 @@
 """Hash-pinned, byte-identical copies of the frozen research ports and the original QuantConnect sources.
 
-tsr_frozen/{engine,strategies,ports}.py are copies of D:\\Trading-Strategy-Research\\paper_trading\\frozen\\*.py
+tsr_frozen/{engine,strategies,ports}.py are copies of D:\\Trading\\Research-Engine\\paper_trading\\frozen\\*.py
 (themselves frozen copies of research/qc_four_strategies and research/687_fix_or_replace, FREEZE.json there).
 They are loaded ONLY through load_frozen_ports(), which verifies every hash first and loads them in an isolated
 module namespace (they use top-level names `engine` / `strategies` that must not leak into sys.modules).

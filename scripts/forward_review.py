@@ -5,7 +5,7 @@ exists, the #529 API-strict experiment X529STRICT-ETORO).
 Writes docs/forward_review/FORWARD_TRADE_REVIEW_<session>.md (and docs/OCT29_FORWARD_TRADE_REVIEW.md for
 2026-10-29). Exit code 2 and NO output file when the session's closing snapshots do not exist yet -- nothing is
 waited for or fabricated. The live paper databases are opened read-only and copied with SQLite's online backup API
-into D:/TSR-evidence/forward_review_<session>/ (checksums recorded); every number below is computed from those
+into D:/Trading/Research-Engine/_local/evidence/forward_review_<session>/ (checksums recorded); every number below is computed from those
 copies. NAV is recomputed independently (cash + units x stored decision close) and compared with the persisted one.
 """
 from __future__ import annotations
@@ -19,15 +19,15 @@ import sqlite3
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SOURCES = {"championship": "D:/TSR-paper-data/paper.sqlite", "x60sqqq": "D:/TSR-paper-data-x60-sqqq/paper.sqlite",
-           "x529strict": "D:/TSR-paper-data-x529-strict/paper.sqlite"}
+SOURCES = {"championship": "D:/Trading/Research-Engine/_local/paper-data/main/paper.sqlite", "x60sqqq": "D:/Trading/Research-Engine/_local/paper-data/x60-sqqq/paper.sqlite",
+           "x529strict": "D:/Trading/Research-Engine/_local/paper-data/x529-strict/paper.sqlite"}
 OPTIONAL = {"x529strict"}            # activated 2026-10-29 (first decision: the 10-28 close)
 FOCUS = ["P529-ORIG", "P529-ETORO", "X529STRICT-ETORO", "P504-ORIG", "P504-ETORO", "P60-ORIG", "P60-ETORO",
          "X60SQQQ-ETORO", "P755-ORIG", "P755-ETORO", "P785-ORIG", "P785-ETORO"]
 
 
 def snapshot_sources(session: str) -> dict:
-    ev = pathlib.Path(f"D:/TSR-evidence/forward_review_{session}")
+    ev = pathlib.Path(f"D:/Trading/Research-Engine/_local/evidence/forward_review_{session}")
     ev.mkdir(parents=True, exist_ok=True)
     out = {}
     for name, src in SOURCES.items():
@@ -68,7 +68,7 @@ def review(session: str) -> str:
          f"Read-only copies: championship `{src['championship']['sha256'][:16]}`, #60-SQQQ "
          f"`{src['x60sqqq']['sha256'][:16]}`"
          + (f", #529 API-strict `{src['x529strict']['sha256'][:16]}`" if X else "")
-         + f" (D:\\TSR-evidence\\forward_review_{session}\\CHECKSUMS.json). "
+         + f" (D:\\Trading\\Research-Engine\\_local\\evidence\\forward_review_{session}\\CHECKSUMS.json). "
          "Virtual money only; no broker.", ""]
     bench = {b: (closes[b] / prev_closes[b] - 1) for b in ("SPY", "QQQ") if b in closes and b in prev_closes}
     L += ["## Benchmarks (close to close)", "", " | ".join(f"{b} {v * 100:+.2f}%" for b, v in bench.items()), ""]
