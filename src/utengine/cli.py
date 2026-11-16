@@ -70,7 +70,9 @@ def cmd_config(a):
 def cmd_account(a):
     if a.action == "attribute-fill":
         return cmd_account_attribute(a)
-    e = _engine(a)
+    # operator bookkeeping and the read-only reconciliation never submit an order: no writer, no trading key
+    # (2026-11-16: in mode=live `account resolve` failed with "trading credential not provisioned")
+    e = _engine(a, monitor=True)
     now = e.nows()
     if a.action == "reconcile":
         r = e.reconcile("manual", e.now())

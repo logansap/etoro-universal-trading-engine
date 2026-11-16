@@ -14,6 +14,9 @@ open from the broker's own order status or position evidence on later cycles):
     gross exposure (never a phantom loss, never an exposure under-count), its sleeve booking waits until the broker
     lists its units, and only after VISIBILITY_GRACE_S does its absence become POSITION_MISSING;
   * a filled full close whose position the portfolio still lists is AWAITING_ABSENCE for the same grace period;
+  * a filled partial close whose position the portfolio still lists with its pre-close units is AWAITING_REDUCTION
+    for the same grace (2026-11-12); while either is awaited and the snapshot's cash still lacks exactly that close's
+    proceeds, the cash is compared on a later read instead of becoming a discrepancy (reconciliation step 6);
   * a position that appears without an engine ownership row is attributed only if an engine order's lookup lists it
     (late attribution); otherwise it stays foreign, as before. Nothing is ever attributed by amount alone here.
 """
@@ -27,6 +30,10 @@ from .errors import BrokerError, BrokerUnavailable, EngineError
 
 VISIBILITY_GRACE_S = 600
 AWAIT_VISIBLE, AWAIT_ABSENT = "await_visible:", "await_absent:"
+# a filled PARTIAL close whose position the portfolio still lists with its pre-close units (2026-11-12, SQQQ
+# 3634154364: the close order filled at 14:31:33, the 14:31:37 portfolio still had 9.370983 units and the old cash;
+# rc2 halted ALL on POSITION_MISMATCH + CASH_DISCREPANCY -13.75 and parked the +13.75 that posted later in suspense)
+AWAIT_REDUCED = "await_reduced:"
 # intents whose order may have created positions that are not yet attributed
 ATTRIBUTABLE = ("ACKNOWLEDGED", "PENDING", "PARTIALLY_FILLED", "UNKNOWN", "FILLED", "CANCELED", "RECONCILED")
 
@@ -124,12 +131,42 @@ def complete_visibility(db, snap, now: str, fill_hook=None) -> list:
         if pid not in live:
             db.put(AWAIT_ABSENT + pid, None)
             db.audit("POSITION_ABSENT", {"position_id": pid, "after_s": round(_age_s(m["since"], now), 3)}, ts=now)
+    for pid, m in markers(db, AWAIT_REDUCED).items():
+        p = live.get(pid)
+        if p is None or p.units < float(m["before"]) - 1e-6:
+            db.put(AWAIT_REDUCED + pid, None)
+            db.audit("POSITION_REDUCED", {"position_id": pid, "units": None if p is None else p.units,
+                                          "expected_units": m["after"], "after_s": round(_age_s(m["since"], now), 3)},
+                     ts=now)
     return done
 
 
 def within_grace(db, prefix: str, pid: str, now: str) -> bool:
     m = db.get(prefix + pid)
     return bool(m) and _age_s(m["since"], now) < VISIBILITY_GRACE_S
+
+
+def awaiting_reduction(db, pid: str, broker_units: float, now: str) -> bool:
+    """The broker still lists an engine position with the units it had before the engine's filled partial close,
+    inside the grace: the portfolio lags the close order (not a change made outside the engine)."""
+    m = db.get(AWAIT_REDUCED + pid)
+    return bool(m) and _age_s(m["since"], now) < VISIBILITY_GRACE_S and abs(broker_units - float(m["before"])) <= 1e-6
+
+
+def stale_closes(db, snap, now: str) -> dict:
+    """Engine closes the order lookup reports FILLED while this snapshot still shows the position as it was before the
+    close (still listed after a full close; pre-close units after a partial one), inside the grace. Returns
+    {position_id: {"flow_id": proceeds flow or None, "full": bool}}. Such a snapshot may predate the close as a whole
+    (cash too, as on 2026-11-12); reconciliation then compares its cash with the books on a later read."""
+    live = {p.position_id: p for p in snap.positions}
+    out = {}
+    for pid, m in markers(db, AWAIT_ABSENT).items():
+        if pid in live and _age_s(m["since"], now) < VISIBILITY_GRACE_S:
+            out[pid] = {"flow_id": m.get("flow_id"), "full": True}
+    for pid, m in markers(db, AWAIT_REDUCED).items():
+        if pid in live and awaiting_reduction(db, pid, live[pid].units, now):
+            out[pid] = {"flow_id": m.get("flow_id"), "full": False}
+    return out
 
 
 def _candidates(db, instrument_id: int) -> list:

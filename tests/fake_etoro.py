@@ -38,6 +38,8 @@ class FakeEtoro:
         self.visibility_lag = []        # per new position, in order: reads during which it alone is not listed
         self.stale, self.cache = 0, None
         self.close_lag = 0              # portfolio reads during which a fully closed position is still listed
+        self.close_stale = 0            # per close: portfolio reads that still return the pre-close state (cash AND
+                                        # positions, as on 2026-11-12 after the SQQQ partial close)
         self.open_fee_bp = 0.0          # opening fee charged with each open (observed 14.9-15.0 bp on x1 CFDs)
         self.omit_execution_ids = False # positionExecutions[] without position ids
         self.hidden, self.ghosts = {}, {}
@@ -231,6 +233,8 @@ class FakeEtoro:
                 p["units"] = round(p["units"] - u, 6)
                 p["amount"] = round(p["amount"] - released, 2)
             self.credit = round(self.credit + proceeds, 6)
+            if self.close_stale and self.cache is not None:
+                self.stale = self.close_stale
             self.close_orders[oid] = {"orderID": oid, "statusID": 3, "errorCode": 0, "errorMessage": "",
                                       "proceeds": proceeds, "positions": [{"positionID": split, "amount": released,
                                                                            "units": u, "rate": bid}]}

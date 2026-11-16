@@ -21,6 +21,24 @@ LIVE_RELEASE_ENABLED = True       # AUTONOMOUS-LIVE RELEASE ONLY (0.11.x). Still
 # passes hard pilot limits (core/supervision.py). It does NOT open autonomous live trading: mode=live stays refused.
 SUPERVISED_PILOT_RELEASE = True
 TRADING_KEY_ENV = ("UTE_ETORO_TRADING_API_KEY", "UTE_ETORO_TRADING_USER_KEY")
+
+
+def live_trading_state(mode: str) -> str:
+    """What the configured mode means for real orders in THIS release (dashboard banner, `status`). The first word is
+    the state. Before 2026-11-16 both places printed a fixed "DISABLED ... release gate closed" sentence from the
+    shadow-only releases, while a 0.11.x engine in mode=live was placing real orders."""
+    if mode == "live":
+        return ("ENABLED: mode=live, real eToro orders at each execution window (halts and the kill switch still "
+                "block orders)" if LIVE_RELEASE_ENABLED else
+                "DISABLED: mode=live but the live release gate is closed in this release")
+    if mode == "supervised_live":
+        return ("SUPERVISED: real eToro orders, each one only after a human approval" if SUPERVISED_PILOT_RELEASE else
+                "DISABLED: the supervised pilot is not part of this release")
+    if mode in ("simulation", "supervised_simulation"):
+        return "SIMULATED: orders go to the simulated broker only"
+    return "DISABLED: shadow mode, no orders are sent"
+
+
 PILOT_APPROVAL_PHRASE = "I_APPROVE_SUPERVISED_LIVE_PILOT_WITH_PER_ORDER_APPROVAL"
 LIVE_ACTIVATION_PHRASE = "I_ACTIVATE_AUTONOMOUS_LIVE_TRADING_OF_THIS_ACCOUNT_BY_THE_UNIVERSAL_ENGINE"
 _AUTH_KEY = object()

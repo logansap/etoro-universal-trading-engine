@@ -6,7 +6,7 @@ import json
 
 from ..core import accounting, halts, sleeves, strategy_manager
 from ..core.order_state import UNRESOLVED
-from ..core.security import LIVE_RELEASE_ENABLED
+from ..core.security import LIVE_RELEASE_ENABLED, live_trading_state
 from ..strategy_modules import REGISTRY
 from ..strategy_modules.vendor import verify_all
 
@@ -45,8 +45,7 @@ def health(engine) -> dict:
     stale = hb_age is None or hb_age > engine.cfg["monitoring"]["heartbeat_stale_seconds"]
     initial = engine.cfg["runtime"]["initial_strategy"]
     rep = {
-        "at": now.isoformat(), "mode": engine.mode, "live_execution": "DISABLED: live writer implemented but the release gate is closed "
-        "(LIVE_RELEASE_ENABLED=False) and mode=live is refused by the schema",
+        "at": now.isoformat(), "mode": engine.mode, "live_execution": live_trading_state(engine.mode),
         "live_release_enabled": LIVE_RELEASE_ENABLED, "write_capability": _write_capability(engine), "monitor_only": getattr(engine, "monitor_only", False),
         "broker": engine.broker.name, "broker_capabilities": engine.broker.capabilities(),
         "active_strategy": act if not engine.multi else {"strategy_id": "PORTFOLIO",

@@ -10,7 +10,9 @@ reads ONE account snapshot and:
   4. checks pending orders: every one must belong to an engine intent -> otherwise halt;
   5. imports broker cash-transaction evidence (when the adapter has that capability);
   6. explains the cash change since the previous snapshot with unreconciled cash flows; an unexplained
-     difference beyond cash_tolerance_usd creates a DISCREPANCY and halts (nothing is booked to balance it);
+     difference beyond cash_tolerance_usd creates a DISCREPANCY and halts (nothing is booked to balance it). A
+     snapshot that still shows an engine close as not done (position listed / pre-close units, inside the grace) and
+     lacks exactly that close's proceeds predates the close: its cash is compared on a later read (2026-11-12);
   7. records the snapshot and computes strategy equity = available cash + engine-owned positions.
 Every issue carries a `subject` (discrepancy id, position id, order id, ...), so an issue that persists across
 reconciliations stays ONE halt and ONE exception (one notification), never a daily repeat.
@@ -142,6 +144,8 @@ def reconcile(db, reader, cfg: dict, point: str, now: str, fill_hook=None) -> Re
                                    "detail": f"engine position {p.position_id} was closed by an engine order but the "
                                              "broker still lists it"})
             elif row["owner"] == "ENGINE" and row["closed_at"] is None and abs(row["units"] - p.units) > 1e-6:
+                if attribution.awaiting_reduction(db, p.position_id, p.units, now):
+                    continue                       # partial close filled moments ago; the portfolio lags
                 issues.append({"kind": "POSITION_MISMATCH", "subject": p.position_id,
                                "detail": f"engine position {p.position_id}: engine {row['units']} units, broker {p.units}"})
             elif row["owner"] == "EXTERNAL_UNACK":
@@ -190,6 +194,7 @@ def reconcile(db, reader, cfg: dict, point: str, now: str, fill_hook=None) -> Re
         funding.investigate(db, reader, cfg, now)  # older suspense vs transfer / funding evidence (idempotent)
 
     unexplained = 0.0                                                          # 6. cash explanation
+    unposted_value, close_lag = 0.0, False
     lagging = attribution.unlisted(db, snap) if prev is not None else []
     if lagging:
         # the snapshot may predate a fill the books already hold: its cash is compared on a later read (the flows
@@ -205,6 +210,22 @@ def reconcile(db, reader, cfg: dict, point: str, now: str, fill_hook=None) -> Re
         base = db.get("cash_baseline") or {"credit": prev["credit"]}
         observed = snap.credit - base["credit"]
         unexplained = round(observed - expected, 6)
+        # a snapshot that predates a filled close as a whole (position AND cash, 2026-11-12): the shortfall is exactly
+        # the proceeds the books already hold for the close(s) the portfolio does not show yet. Compare its cash on a
+        # later read (flows stay unattached, the baseline is kept); anything else is a discrepancy, as before
+        stale = attribution.stale_closes(db, snap, now)
+        waiting = {v["flow_id"] for v in stale.values() if v["flow_id"]}
+        in_flight = round(sum(r["amount"] for r in flows if r["flow_id"] in waiting), 6)
+        close_lag = bool(waiting) and abs(in_flight) > tol and abs(unexplained + in_flight) <= tol
+    if close_lag:
+        issues.append({"kind": "AWAITING_VISIBILITY", "subject": ",".join(sorted(stale)),
+                       "detail": f"engine close(s) of {', '.join(sorted(stale))} filled but the broker portfolio still "
+                                 f"shows the position(s) and the cash before the close ({in_flight:+.2f} not posted "
+                                 "yet); cash is reconciled on a later read"})
+        # value what the snapshot shows: a fully closed position it still lists, with the cash it has not released
+        unposted_value = sum(p.value for p in snap.positions if stale.get(p.position_id, {}).get("full"))
+        unexplained = 0.0
+    elif prev is not None and not lagging:
         with db.tx():
             db.put("cash_baseline", {"snapshot_id": snap_id, "credit": snap.credit})
             for r in flows:
@@ -251,7 +272,7 @@ def reconcile(db, reader, cfg: dict, point: str, now: str, fill_hook=None) -> Re
     pos_value = sum(p.value for p in eng_pos) if all(p.unrealized_pnl is not None for p in eng_pos) else None
     # positions recorded from their order but not listed yet count at cost (their cash has already left)
     strategy_equity = (None if pos_value is None else
-                       round(snap.available_cash + pos_value + attribution.awaiting_cost(db, snap), 6))
+                       round(snap.available_cash + pos_value + attribution.awaiting_cost(db, snap) + unposted_value, 6))
     if strategy_equity is not None and funding.automatic(cfg):
         strategy_equity = round(strategy_equity - funding.suspense_total(db), 6)   # suspense is nobody's capital
 

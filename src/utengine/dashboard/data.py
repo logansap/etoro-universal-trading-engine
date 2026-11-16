@@ -23,6 +23,7 @@ from ..core import funding, halts, retirement, sleeves
 from ..core.calendar import NY, Calendar
 from ..core.order_state import UNRESOLVED
 from ..core.scheduler import Scheduler
+from ..core.security import live_trading_state
 
 UTC = dt.timezone.utc
 STALE_SECONDS = 900
@@ -111,7 +112,7 @@ class Data:
     # ---------------------------------------------------------------- sections
     def meta(self) -> dict:
         return {"mode": self.mode.upper(), "instance": self.cfg["engine"]["instance_id"],
-                "live_trading": "DISABLED (release gate closed; mode=live refused)", "read_only": True,
+                "live_trading": live_trading_state(self.mode), "read_only": True,
                 "now": self.clock().isoformat()}
 
     def overview(self) -> dict:

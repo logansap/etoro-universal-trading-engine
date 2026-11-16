@@ -73,7 +73,7 @@ function line(series,key,color,h=160){const pts=series.filter(p=>p[key]!=null);i
  const ys=pts.map(p=>p[key]),mn=Math.min(...ys),mx=Math.max(...ys),W=600,pad=6,sx=i=>pad+i*(W-2*pad)/(pts.length-1),sy=y=>h-pad-(mx===mn?0.5:(y-mn)/(mx-mn))*(h-2*pad);
  return `<svg viewBox="0 0 ${W} ${h}" role="img" aria-label="${key}"><polyline fill="none" stroke="${color}" stroke-width="2" points="${pts.map((p,i)=>sx(i)+","+sy(p[key])).join(" ")}"/><text x="8" y="14" font-size="11" fill="currentColor" opacity=".6">${esc(key)} ${mn.toFixed(2)} .. ${mx.toFixed(2)}</text></svg>`}
 async function J(u){const r=await fetch(u,{credentials:"same-origin"});if(r.status===401){location="/login";throw 0}const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);return j}
-function head(m){$("#mode").className="mode "+m.mode;$("#mode").textContent=m.mode+" MODE · read-only dashboard · live trading "+m.live_trading.split(" ")[0];$("#inst").textContent=m.instance}
+function head(m){$("#mode").className="mode "+m.mode;$("#mode").textContent=m.mode+" MODE · read-only dashboard · live trading "+m.live_trading.split(/[ :]/)[0];$("#inst").textContent=m.instance}
 const V={};
 V.overview=async()=>{const o=await J("/api/overview");head(o);const a=o.account||{};
  $("#asof").innerHTML=`broker snapshot ${esc(o.snapshot_as_of)} (${o.snapshot_age_s??"?"} s) ${badge(o.data_label)}`;

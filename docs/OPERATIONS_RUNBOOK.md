@@ -52,7 +52,8 @@ Expected rhythm (New York time):
 | halt EXTERNAL_POSITION | find out who traded. If it is legitimate: `account acknowledge-external` + `halt-clear`. Never close it from here |
 | halt UNKNOWN_ORDER | check the eToro UI for the intent's instrument and amount. If a position exists, wait: the engine attributes it on the next cycle. If nothing exists after the window: `orders resolve --as NOT_SUBMITTED` |
 | halt UNRESOLVED_ORDER | the order is pending or partial at the broker. The engine keeps polling it. Clear the halt after it is final |
-| halt POSITION_MISMATCH / POSITION_MISSING | something changed an engine position outside the engine. Investigate before clearing |
+| halt POSITION_MISMATCH / POSITION_MISSING | something changed an engine position outside the engine. Investigate before clearing. (eToro's portfolio lagging the engine's own filled close, position and cash together, is not a halt since 2026-11-16: reconciliation shows AWAITING_VISIBILITY for up to 600 s and compares the cash on a later read) |
+| `account resolve` says "trading credential not provisioned" | fixed 2026-11-16 (`account` commands run monitor-only). On an older release run `accounting.resolve_discrepancy` from a monitor-only engine as user `ute` |
 | halt CONFIG_DRIFT | someone changed a strategy YAML or module. Revert it, or re-activate through preview and activate |
 | halt BROKER_UNAVAILABLE | clears itself when reads work again; check the credentials or network |
 | halt SWITCH_FAILED | review the switch plan and intents (`orders --all`), then preview again (forward or back) |

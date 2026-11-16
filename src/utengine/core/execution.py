@@ -336,11 +336,17 @@ class Executor:
                 amt = live[pid].amount if same else (own["amount"] * after / own["units"] if own["units"]
                                                      else own["amount"])
                 self.db.con.execute("UPDATE ownership SET units=?, amount=? WHERE position_id=?", (after, amt, pid))
+                if (not foreign and before is not None and pid in live
+                        and abs(live[pid].units - before) <= 1e-6 and after < before - 1e-9):
+                    # filled by the order lookup, but the portfolio still shows the pre-close units (2026-11-12)
+                    self.db.put(attribution.AWAIT_REDUCED + pid, {"since": now, "intent_id": row["intent_id"],
+                                                                  "before": before, "after": after, "flow_id": fid})
             elif own and own["closed_at"] is None:
                 self.db.con.execute("UPDATE ownership SET closed_at=?, close_intent_id=? WHERE position_id=?",
                                     (now, row["intent_id"], pid))
                 if pid in live:                            # filled, but the portfolio still lists it
-                    self.db.put(attribution.AWAIT_ABSENT + pid, {"since": now, "intent_id": row["intent_id"]})
+                    self.db.put(attribution.AWAIT_ABSENT + pid, {"since": now, "intent_id": row["intent_id"],
+                                                                 "flow_id": fid})
             if self.fill_hook and before is not None and not foreign:
                 self.fill_hook(self.db, row, {"closed_units": round(before - after, 9), "proceeds": st.proceeds,
                                               "flow_id": fid}, now)
